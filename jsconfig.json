@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "react": ["./src/react"],
+      "react/*": ["./src/react/*"],
+      "react-dom": ["./src/react-dom"],
+      "react-dom/*": ["./src/react-dom/*"],
+      "react-reconciler": ["./src/react-reconciler"],
+      "react-reconciler/*": ["./src/react-reconciler/*"],
+      "scheduler": ["./src/scheduler"],
+      "scheduler/*": ["./src/scheduler/*"],
+      "shared": ["./src/shared"],
+      "shared/*": ["./src/shared/*"]
+    }
+  },
+  "include": ["src"]
+}
