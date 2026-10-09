@@ -1,7 +1,16 @@
-import { createContainer } from 'react-reconciler/src/ReactFiberReconciler'
+import {
+  createContainer,
+  updateContainer
+} from 'react-reconciler/src/ReactFiberReconciler'
 
 function ReactDOMRoot(internalRoot) {
   this._internalRoot = internalRoot
+}
+
+ReactDOMRoot.prototype.render = function (children) {
+  const root = this._internalRoot
+  // 传入的root就是FiberRootNode，也就是div#root
+  updateContainer(children, root)
 }
 
 /**

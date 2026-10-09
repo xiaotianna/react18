@@ -1,5 +1,5 @@
 import { createHostRootFiber } from './ReactFiber'
-import { initialUpdateQueue } from './ReactFiberClassUodateQueue'
+import { initialUpdateQueue } from './ReactFiberClassUpdateQueue'
 
 function FiberRootNode(containerInfo) {
   // 外部createRoot传递的容器信息，也就是 div#root 这个dom节点
