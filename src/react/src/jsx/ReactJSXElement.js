@@ -18,7 +18,6 @@ const RESERVED_PROPS = {
 }
 
 export function jsxDEV(type, config) {
-  debugger
   const props = {} // 属性对象
   let key = null // 每个虚拟dom可以有一个可选的key属性，用来区分一个父节点下的不同子节点
   let ref = null // 后面可以通过ref获取到真实的dom
