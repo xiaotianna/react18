@@ -7,6 +7,7 @@ function FiberRootNode(containerInfo) {
 }
 
 // 创建根Fiber（FiberRootNode）
+// FiberRoot是一个真实的dom节点，RootFiber是Fiber树的根节点
 export function createFiberRoot(containerInfo) {
   const root = new FiberRootNode(containerInfo)
 

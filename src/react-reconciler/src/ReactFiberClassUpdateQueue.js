@@ -1,3 +1,5 @@
+import { markUpdateLaneFromFiberToRoot } from './ReactFiberConcurrentUpdates'
+
 // 每个fiber节点上都有更新队列
 export function initialUpdateQueue(fiber) {
   // 创建一个新的更新队列（链表）
@@ -33,4 +35,8 @@ export function enqueueUpdate(fiber, update) {
   }
   // pending 指向尾节点，pending.next 指向头节点
   updateQueue.shared.pending = update
+
+  // 返回根节点，从当前fiber遍历到根节点
+  // 目前还没有实现更新优先级
+  return markUpdateLaneFromFiberToRoot(fiber)
 }

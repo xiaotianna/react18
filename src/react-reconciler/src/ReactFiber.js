@@ -21,6 +21,8 @@ export function FiberNode(tag, pendingProps, key) {
   this.child = null
   // 指向兄弟节点
   this.sibling = null
+  // 该 Fiber 在父节点 children 中的位置，也就是sibling的索引
+  this.index = 0
 
   // 虚拟dom会提供pendingProps用来创建fiber节点的属性，处理后赋值给memoizedProps（双缓冲结构）
   // 等待生效的属性
@@ -51,4 +53,45 @@ export function createFiber(tag, pendingProps, key) {
 
 export function createHostRootFiber() {
   return createFiber(HostRoot, null, null)
+}
+
+/**
+ * 基于老的fiber和新的属性来创建新的fiber
+ * @param {*} current 老fiber
+ * @param {*} pendingProps 新属性
+ */
+export function createWorkInProgress(current, pendingProps) {
+  let workInProgress = current.alternate
+  if (workInProgress === null) {
+    // 创建新的fiber
+    workInProgress = createFiber(current.tag, pendingProps, current.key)
+    workInProgress.type = current.type
+    workInProgress.stateNode = current.stateNode
+    // 双向指向，对应【docs/04-beginWork/image2.png】alternate 的连接部分
+    workInProgress.alternate = current // 新的指向老的fiber
+    current.alternate = workInProgress // 老的指向新的
+  } else {
+    // 更新
+    workInProgress.pendingProps = pendingProps
+    workInProgress.type = current.type
+    // 赋值为NoFlags是因为：是准备本次更新，先清空旧标记，还没开始比较新旧内容。
+    // else 表示已有 current.alternate，可以复用这个 Fiber 对象。
+    // 它可能保留着上一次渲染的标记，所以需要重置
+    workInProgress.flags = NoFlags
+    workInProgress.subtreeFlags = NoFlags
+  }
+  /**
+   * 这里不需要处理父节点return，由后续“连接父子节点”的代码设置
+   * 例如：
+   *  const newChild = createWorkInProgress(currentChild, newProps)
+      newChild.return = parentWorkInProgress
+   */
+  workInProgress.child = current.child
+  workInProgress.sibling = current.sibling
+  workInProgress.memoizedProps = current.memoizedProps
+  workInProgress.memoizedState = current.memoizedState
+  workInProgress.updateQueue = current.updateQueue
+  workInProgress.index = current.index
+
+  return workInProgress
 }
