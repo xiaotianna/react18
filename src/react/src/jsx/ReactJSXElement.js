@@ -43,7 +43,7 @@ export function jsxDEV(type, config) {
 // 虚拟dom
 function ReactElement(type, key, ref, props) {
   return {
-    $$typeof: REACT_ELEMENT_TYPE,
+    $$typeof: REACT_ELEMENT_TYPE, // react元素类型，也就是虚拟dom
     type, // h1、span
     key, // 唯一标识
     ref, // 获取真实dom

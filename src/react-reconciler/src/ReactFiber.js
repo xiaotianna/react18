@@ -1,5 +1,5 @@
 import { NoFlags } from './ReactFiberFlags'
-import { HostRoot } from './ReactWorkTags'
+import { HostComponent, HostRoot } from './ReactWorkTags'
 
 /**
  * @param {*} tag fiber的类型：函数组件（0）、类组件（1）、原生组件（5）、根元素（3）
@@ -94,4 +94,24 @@ export function createWorkInProgress(current, pendingProps) {
   workInProgress.index = current.index
 
   return workInProgress
+}
+
+/**
+ * 根据虚拟dom创建fiber节点
+ * @param {*} element
+ */
+export function createFiberFromElement(element) {
+  const { type, key, props: pendingProps } = element
+  return createFiberFromTypeAndProps(type, key, pendingProps)
+}
+
+function createFiberFromTypeAndProps(type, key, pendingProps) {
+  let tag = IndeterminateComponent
+  // 如果type类型是字符串，说明此fiber是一个原生组件
+  if (typeof type === 'string') {
+    tag = HostComponent
+  }
+  const fiber = createFiber(tag, pendingProps, key)
+  fiber.type = type
+  return fiber
 }

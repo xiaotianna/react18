@@ -26,7 +26,7 @@ function ensureRootIsscheduled(root) {
  */
 function performConcurrentWorkOnRoot(root) {
   // 第一次渲染以同步的方式渲染根节点，初次渲染的时候，都是同步的（为了保证初始化加载的完整）
-  renderRootSync()
+  renderRootSync(root)
 }
 
 function renderRootSync(root) {
