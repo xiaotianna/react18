@@ -1,5 +1,5 @@
 import { NoFlags } from './ReactFiberFlags'
-import { HostComponent, HostRoot } from './ReactWorkTags'
+import { HostComponent, HostRoot, HostText, IndeterminateComponent } from './ReactWorkTags'
 
 /**
  * @param {*} tag fiber的类型：函数组件（0）、类组件（1）、原生组件（5）、根元素（3）
@@ -114,4 +114,8 @@ function createFiberFromTypeAndProps(type, key, pendingProps) {
   const fiber = createFiber(tag, pendingProps, key)
   fiber.type = type
   return fiber
+}
+
+export function createFiberFromText(content) {
+  return createFiber(HostText, content, null)
 }

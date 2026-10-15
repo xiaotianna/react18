@@ -1,6 +1,7 @@
 import { REACT_ELEMENT_TYPE } from 'shared/ReactSymbols'
-import { createFiberFromElement } from './ReactFiber'
+import { createFiberFromElement, createFiberFromText } from './ReactFiber'
 import { Placement } from './ReactFiberFlags'
+import isArray from 'shared/isArray'
 
 /**
  * 工厂方法：是否跟踪副作用
@@ -38,6 +39,69 @@ function createChildReconciler(shouldTrackSideEffects) {
     return newFiber
   }
 
+  function createChild(returnFiber, newChild) {
+    // 纯文本
+    if (
+      (typeof newChild === 'string' && newChild !== '') ||
+      typeof newChild === 'number'
+    ) {
+      const created = createFiberFromText(`${newChild}`)
+      created.return = returnFiber
+      return created
+    }
+    if (typeof newChild === 'object' && newChild !== null) {
+      switch (newChild.$$typeof) {
+        case REACT_ELEMENT_TYPE: {
+          const created = createFiberFromElement(newChild)
+          created.return = returnFiber
+          return created
+        }
+        default:
+          break
+      }
+    }
+  }
+
+  function placeChild(newFiber, newIndex) {
+    newFiber.index = newIndex
+    if (shouldTrackSideEffects) {
+      // 如果一个fiber的flags上有Placement，说明此节点需要创建真实dom并且插入到父容器中
+      // 如果父fiber节点是初次挂载，shouldTrackSideEffects为false，不需要添加flags
+      // 这种情况下会在完成阶段把所有的子节点全部添加到自己身上
+      newFiber.flags |= Placement
+    }
+  }
+
+  /**
+   * 遍历newChildren，创建子fiber，把它们连成兄弟链，最后返回第一个子 Fiber
+   * @param {*} returnFiber 
+   * @param {*} currentFirstFiber 
+   * @param {*} newChildren 
+   * @returns 
+   */
+  function reconcileChildArray(returnFiber, currentFirstFiber, newChildren) {
+    // 返回的第一个新儿子
+    let resultingFirstChild = null
+    // 上一个的新fiber
+    let previousNewFiber = null
+    // 在FiberNode上的index字段
+    let newIndex = 0
+    for (; newIndex < newChildren.length; newIndex++) {
+      const newFiber = createChild(returnFiber, newChildren[newIndex])
+      if (newFiber === null) continue
+      placeChild(newFiber, newIndex)
+      if (previousNewFiber === null) {
+        // 如果previousNewFiber为null，说明这是第一个fiber（大儿子）
+        resultingFirstChild = newFiber
+      } else {
+        // 不是大儿子，就把newFiber添加到上一个子节点的后面（也就是上一个节点的兄弟节点）
+        previousNewFiber.sibling = newFiber
+      }
+      previousNewFiber = newFiber
+    }
+    return resultingFirstChild
+  }
+
   /**
    * 比较子fiber（dom diff），就是用老的子fiber链表和新的虚拟dom进行比较的过程
    * @param {*} returnFiber 新的父fiber（workInProgress）
@@ -56,6 +120,12 @@ function createChildReconciler(shouldTrackSideEffects) {
           break
       }
     }
+    // 如图【docs/06-beginWork-03/image.png】，针对于h1节点，newChildren是数组
+    // 不是单节点就进入不了上面的判断（typeof newChild === 'object' && newChild !== null）
+    if (isArray(newChild)) {
+      return reconcileChildArray(returnFiber, currentFirstFiber, newChild)
+    }
+    return null
   }
   return reconcileChildFibers
 }

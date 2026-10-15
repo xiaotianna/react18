@@ -46,6 +46,10 @@ function workLoopSync() {
   }
 }
 
+/**
+ * 执行一个工作单元
+ * @param {*} unitOfWork 
+ */
 function performUnitOfWork(unitOfWork) {
   // unitOfWork -> workInProgress，也就是新fiber
   // unitOfWork.alternate就是指向老fiber
