@@ -44,7 +44,7 @@ function appendAllChildren(parent, workInProgress) {
  * @param {*} workInProgress 新的构建的fiber
  */
 export function completeWork(current, workInProgress) {
-  logger('completeWork', current, workInProgress)
+  logger('completeWork', workInProgress)
   const newProps = workInProgress.pendingProps
   switch (workInProgress.tag) {
     case HostRoot: // 根节点
