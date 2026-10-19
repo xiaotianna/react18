@@ -131,10 +131,10 @@ function insertOrAppendPlacementNode(node, before, parent) {
     const { child } = node
     if (child !== null) {
       // 把child添加到父dom节点中去（递归）
-      insertOrAppendPlacementNode(child, parent)
+      insertOrAppendPlacementNode(child, before, parent)
       let { sibling } = child
       while (sibling !== null) {
-        insertOrAppendPlacementNode(sibling, parent)
+        insertOrAppendPlacementNode(sibling, before, parent)
         sibling = sibling.sibling
       }
     }
