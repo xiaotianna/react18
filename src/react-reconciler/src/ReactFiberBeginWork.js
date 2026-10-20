@@ -1,8 +1,15 @@
 import { logger } from 'shared/logger'
-import { HostComponent, HostRoot, HostText } from './ReactWorkTags'
+import {
+  FunctionComponent,
+  HostComponent,
+  HostRoot,
+  HostText,
+  IndeterminateComponent
+} from './ReactWorkTags'
 import { processUpdateQueue } from './ReactFiberClassUpdateQueue'
 import { mountChildFibers, reconcileChildFibers } from './ReactChildFiber'
 import { shouldSetTextContent } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
+import { renderWithHooks } from './ReactFiberHooks'
 
 /**
  * 根据新的虚拟dom生成新的fiber链表
@@ -67,6 +74,23 @@ function updateHostComponent(current, workInProgress) {
 }
 
 /**
+ * 挂载函数组件
+ * @param {*} current 老fiber
+ * @param {*} workInProgress 新fiber
+ * @param {*} Component 组件类型，也就是函数组件的定义
+ */
+function mountIndeterminateComponent(current, workInProgress, Component) {
+  const props = workInProgress.pendingProps
+  // value就是函数组件返回的虚拟dom
+  // renderWithHooks内部相当于是在：const value = Component(props)，只是因为有hooks的逻辑需要单独抽离
+  const value = renderWithHooks(current, workInProgress, Component, props)
+  workInProgress.tag = FunctionComponent
+  // 协调子节点，和上面的 updateHostRoot 方法中的一样
+  reconcileChildren(current, workInProgress, value)
+  return workInProgress.child
+}
+
+/**
  * 根据新虚拟dom去构建新的fiber子链表（child、child.slibing）
  * @param {*} current 老fiber
  * @param {*} workInProgress 新fiber
@@ -75,6 +99,13 @@ function updateHostComponent(current, workInProgress) {
 export function beginWork(current, workInProgress) {
   logger('beginWork', workInProgress)
   switch (workInProgress.tag) {
+    // 在react中组件有两种，一种是函数组件，一种是类组件，本质都是函数，所以在beginWork不区分函数和类组件
+    case IndeterminateComponent:
+      return mountIndeterminateComponent(
+        current,
+        workInProgress,
+        workInProgress.type
+      )
     case HostRoot:
       return updateHostRoot(current, workInProgress)
     case HostComponent:
