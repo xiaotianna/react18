@@ -1,4 +1,5 @@
 import { setInitiailProperties } from './ReactDOMComponent'
+import { precacheFiberNode, updateFiberProps } from './ReactDOMComponentTree'
 
 // 判断当前的虚拟dom是否是纯文本
 export function shouldSetTextContent(type, props) {
@@ -11,9 +12,20 @@ export function createTextInstance(content) {
   return document.createTextNode(content)
 }
 
-export function createInstance(type) {
+/**
+ * 创建真实 DOM
+ * 同时把它对应的 Fiber 和 props 也保存到 DOM 上，供事件系统读取。
+ * 也就是 precacheFiberNode 和 updateFiberProps
+ * @param {*} type 
+ * @param {*} props 
+ * @param {*} fiberInst 
+ * @returns 
+ */
+export function createInstance(type, props, fiberInst) {
   const domElement = document.createElement(type)
-  // updateFiberProps(domElement, props)
+  precacheFiberNode(fiberInst, domElement)
+  // 把props属性直接保存在domElement的属性上
+  updateFiberProps(domElement, props)
   return domElement
 }
 
