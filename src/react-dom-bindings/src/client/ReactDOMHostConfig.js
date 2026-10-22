@@ -23,6 +23,7 @@ export function createTextInstance(content) {
  */
 export function createInstance(type, props, fiberInst) {
   const domElement = document.createElement(type)
+  // 提前缓存fiber节点的实例到dom节点上
   precacheFiberNode(fiberInst, domElement)
   // 把props属性直接保存在domElement的属性上
   updateFiberProps(domElement, props)

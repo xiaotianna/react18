@@ -13,6 +13,7 @@ export function getClosestInstanceFromNode(targetNode) {
 }
 /**
  * 提前缓存fiber节点的实例到dom节点上（存）
+ * 也就是给真实dom上添加一个属性，值是fiber
  * @param {*} hostInst
  * @param {*} node
  */

@@ -55,6 +55,7 @@ export function completeWork(current, workInProgress) {
       // 现在只是在处理创建或者挂载新节点的逻辑，后面此处分进行分区是初次挂载还是更新
       // 创建真实的dom节点
       const { type } = workInProgress
+      // 创建真实dom
       const instance = createInstance(type, newProps, workInProgress)
       // 把自己所有的儿子都添加到自己身上
       appendAllChildren(instance, workInProgress)

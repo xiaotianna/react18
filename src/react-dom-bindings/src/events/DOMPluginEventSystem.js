@@ -10,6 +10,7 @@ import getEventTarget from './getEventTarget'
 import { HostComponent } from 'react-reconciler/src/ReactWorkTags'
 import getListener from './getListener'
 
+// 会往allNativeEvents中添加事件名称，供listenToAllSupportedEvents方法使用
 SimpleEventPlugin.registerEvents()
 
 // 随机数标识
@@ -145,6 +146,59 @@ function dispatchEventForPlugins(
     eventSystemFlags,
     targetContainer
   )
+  // 遍历已经收集好的事件队列，把事件交给对应的监听器处理
+  processDispatchQueue(dispatchQueue, eventSystemFlags)
+}
+
+// 遍历事件队列
+function processDispatchQueue(dispatchQueue, eventSystemFlags) {
+  // 判断是否在捕获阶段
+  const inCapturePhase = (eventSystemFlags & IS_CAPTURE_PHASE) !== 0
+  for (let i = 0; i < dispatchQueue.length; i++) {
+    const { event, listeners } = dispatchQueue[i]
+    processDispatchQueueItemsInOrder(event, listeners, inCapturePhase)
+  }
+}
+
+/**
+ * 按捕获或冒泡顺序遍历回调，并检查是否停止传播
+ * @param {*} event 
+ * @param {*} dispatchListeners 
+ * @param {*} inCapturePhase 
+ * @returns 
+ */
+function processDispatchQueueItemsInOrder(
+  event,
+  dispatchListeners,
+  inCapturePhase
+) {
+  if (inCapturePhase) {
+    // 存入dispatchListeners的时候是[子，父]，拿的时候就需要[父，子]
+    for (let i = dispatchListeners.length - 1; i >= 0; i--) {
+      const { listener, currentTarget } = dispatchListeners[i]
+      if (event.isPropagationStopped()) {
+        return
+      }
+      executeDispatch(event, listener, currentTarget)
+    }
+  } else {
+    for (let i = 0; i < dispatchListeners.length; i++) {
+      const { listener, currentTarget } = dispatchListeners[i]
+      if (event.isPropagationStopped()) {
+        return
+      }
+      executeDispatch(event, listener, currentTarget)
+    }
+  }
+}
+
+// 真正执行事件回调
+function executeDispatch(event, listener, currentTarget) {
+  // 合成事件实例event的currentTarget是在不断变化的，因为同一次事件、同一阶段的多个回调，共用同一个合成事件对象。
+  // event.nativeEvent是原生事件对象，是永远不变的
+  // event.currentTarget是当前的事件源，它会随着事件回调的执行不断变化的
+  event.currentTarget = currentTarget
+  listener(event)
 }
 
 function extractEvents(
@@ -169,11 +223,11 @@ function extractEvents(
 
 /**
  * 从目标 Fiber 开始，沿父 Fiber 向上查找，收集指定阶段的事件回调，最后返回数组
- * @param {*} targetFiber 
- * @param {*} reactName 
- * @param {*} nativeEventType 
- * @param {*} isCapturePhase 
- * @returns 
+ * @param {*} targetFiber
+ * @param {*} reactName
+ * @param {*} nativeEventType
+ * @param {*} isCapturePhase
+ * @returns
  */
 export function accumulateSinglePhaseListeners(
   targetFiber,
@@ -192,7 +246,7 @@ export function accumulateSinglePhaseListeners(
     if (tag === HostComponent && stateNode !== null) {
       const listener = getListener(instance, reactEventName)
       if (listener) {
-        listeners.push(listener)
+        listeners.push(createDispatchListener(instance, listener, stateNode))
       }
     }
     // 继续查找父 Fiber
@@ -201,4 +255,8 @@ export function accumulateSinglePhaseListeners(
   // 返回targetFiber及其祖先中，当前事件在指定阶段的回调数组（冒泡/捕获）
   // 例如点击按钮，收集冒泡回调的结果就是：[buttonClick, parentClick]
   return listeners
+}
+
+function createDispatchListener(instance, listener, currentTarget) {
+  return { instance, listener, currentTarget }
 }

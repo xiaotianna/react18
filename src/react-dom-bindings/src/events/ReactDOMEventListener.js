@@ -44,13 +44,13 @@ function dispatchDiscreteEvent(
  * 此方法就是委托给容器的回调，当容器#root在捕获/冒泡阶段处理事件的时候会执行此函数
  * @param {*} domEventName
  * @param {*} eventSystemFlags
- * @param {*} container
+ * @param {*} targetContainer
  * @param {*} nativeEvent
  */
 export function dispatchEvent(
   domEventName,
   eventSystemFlags,
-  container,
+  targetContainer,
   nativeEvent
 ) {
   // 获取事件源，是一个真实dom，也就是获取是哪个dom触发的事件
