@@ -1,24 +1,14 @@
 import { createRoot } from 'react-dom/client'
+import * as React from 'react'
+
+function counter(state, action) {
+  if (action.type === 'add') return state + 1
+  return state
+}
 
 function FunctionComponent() {
-  return (
-    <h1
-      onClick={(evnet) => console.log('父冒泡', evnet.currentTarget)}
-      onClickCapture={(evnet) => console.log('父捕获', evnet.currentTarget)}
-    >
-      hello{' '}
-      <span
-        onClick={(evnet) => {
-          console.log('子冒泡', evnet.currentTarget)
-          evnet.stopPropagation()
-        }}
-        onClickCapture={(evnet) => console.log('子捕获', evnet.currentTarget)}
-        style={{ color: 'red' }}
-      >
-        world
-      </span>
-    </h1>
-  )
+  const [number, setNumber] = React.useReducer(counter, 0)
+  return <button onClick={() => setNumber({ type: 'add' })}>{number}</button>
 }
 
 const element = <FunctionComponent />
