@@ -1,4 +1,6 @@
 import ReactSharedInternals from 'shared/ReactSharedInternals'
+import { scheduleUpdateOnFiber } from './ReactFiberWorkLoop'
+import { enqueueConcurrentHookUpdate } from './ReactFiberConcurrentUpdates'
 
 const { ReactCurrentDispatcher } = ReactSharedInternals
 
@@ -15,9 +17,9 @@ const HooksDispatcherOnMount = {
 /**
  * useReducer 在组件首次渲染时的初始化实现
  * 负责创建 Hook、保存初始状态，并返回 [状态, dispatch]
- * @param {*} reducer 
- * @param {*} inheritArg 
- * @returns 
+ * @param {*} reducer
+ * @param {*} inheritArg
+ * @returns
  */
 function mountReducer(reducer, inheritArg) {
   /**
@@ -28,15 +30,16 @@ function mountReducer(reducer, inheritArg) {
   hook.memoizedState = inheritArg
   // 创建更新队列，保存在 Hook 上
   const queue = {
-    pending: null
+    pending: null,
+    dispatch: null
   }
   hook.queue = queue
   // 创建当前 Hook 专属的 dispatch
-  const dispatch = dispatchReducerAction.bind(
+  const dispatch = (queue.dispatch = dispatchReducerAction.bind(
     null,
     currentRenderingFiber, // 更新属于哪个组件
     queue // 更新放进哪个 Hook 的队列
-  )
+  ))
   // 对应：const [count, dispatch] = [0, dispatch函数]
   return [hook.memoizedState, dispatch]
 }
@@ -48,7 +51,16 @@ function mountReducer(reducer, inheritArg) {
  * @param {*} action 派发的动作
  */
 function dispatchReducerAction(fiber, queue, action) {
-
+  // 在每个hook里会存放一个更新队列
+  // 更新队列是一个更新对象的循环链表update1.next=update2.next=update1
+  const update = { // 更新对象
+    action, // {type: 'add', payload: 1}
+    next: null
+  }
+  // 把当前最新的更新添加到更新队列中，返回当前的根fiber
+  const root = enqueueConcurrentHookUpdate(fiber, queue, update)
+  // 安排更新任务
+  scheduleUpdateOnFiber(root)
 }
 
 /**

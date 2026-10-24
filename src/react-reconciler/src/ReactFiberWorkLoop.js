@@ -5,9 +5,11 @@ import { completeWork } from './ReactFiberCompleteWork'
 import { MutationMask, NoFlags, Placement, Update } from './ReactFiberFlags'
 import { commitMutationEffectsOnFiber } from './ReactFiberCommitWork'
 import { HostComponent, HostRoot, HostText } from './ReactWorkTags'
+import { finishQueueingConcurrentUpdates } from './ReactFiberConcurrentUpdates'
 
 // 当前正在处理的 Fiber 节点；没有工作时为 null
 let workInProgress = null
+let workInProgressRoot = null
 
 /**
  * 计划更新root
@@ -20,6 +22,9 @@ export function scheduleUpdateOnFiber(root) {
 }
 
 function ensureRootIsscheduled(root) {
+  // 实现批量更新，只有第一次才进入，commitRoot后清空
+  if (workInProgressRoot) return
+  workInProgressRoot = root
   // 告诉浏览器需要执行performConcurrentWorkOnRoot
   scheduleCallback(performConcurrentWorkOnRoot.bind(null, root))
 }
@@ -36,6 +41,7 @@ function performConcurrentWorkOnRoot(root) {
   const finishedWork = root.current.alternate
   root.finishedWork = finishedWork
   commitRoot(root)
+  workInProgressRoot = null
 }
 
 function commitRoot(root) {
@@ -60,9 +66,11 @@ function renderRootSync(root) {
   workLoopSync()
 }
 
+// 为本轮渲染做好准备——准备工作中的根 Fiber，并把暂存的更新放进各自 Hook 的队列
 function prepareFreshStack(root) {
   workInProgress = createWorkInProgress(root.current, null)
-  console.log(workInProgress)
+  // 把暂存的更新放进各自 Hook 的队列
+  finishQueueingConcurrentUpdates()
 }
 
 function workLoopSync() {
