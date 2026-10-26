@@ -4,7 +4,8 @@ import { markUpdateLaneFromFiberToRoot } from './ReactFiberConcurrentUpdates'
 // 更新状态
 export const UpdateState = 0
 
-// 每个fiber节点上都有更新队列
+// 每个fiber节点上都有更新队列，不同fiber的updateQueue不一样
+// 用于根 Fiber、类组件 Fiber 的更新队列
 export function initialUpdateQueue(fiber) {
   // 创建一个新的更新队列（链表）
   const queue = {

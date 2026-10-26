@@ -1,5 +1,9 @@
 import { REACT_ELEMENT_TYPE } from 'shared/ReactSymbols'
-import { createFiberFromElement, createFiberFromText } from './ReactFiber'
+import {
+  createFiberFromElement,
+  createFiberFromText,
+  createWorkInProgress
+} from './ReactFiber'
 import { Placement } from './ReactFiberFlags'
 import isArray from 'shared/isArray'
 
@@ -9,13 +13,45 @@ import isArray from 'shared/isArray'
  */
 function createChildReconciler(shouldTrackSideEffects) {
   /**
+   * 准备本轮的工作 Fiber
+   * @param {*} fiber 
+   * @param {*} pendingProps 
+   * @returns 
+   */
+  function useFiber(fiber, pendingProps) {
+    // 基于旧 Fiber 获取本轮的工作 Fiber
+    const clone = createWorkInProgress(fiber, pendingProps)
+    clone.index = 0
+    clone.sibling = null
+    return clone
+  }
+
+  /**
    * 根据单个虚拟dom创建fiber，并让它指向父fiber，最后返回该fiber
    * @param {*} returnFiber 新的父fiber（workInProgress）
    * @param {*} currentFirstFiber 老fiber的第一个子fiber
    * @param {*} element 虚拟dom element
-   * @returns
+   * @returns 返回的第一个新子fiber
    */
   function reconcileSingleElement(returnFiber, currentFirstFiber, element) {
+    // 更新时，根据新元素的 key 和 type，查找并复用旧 Fiber
+    // 新的虚拟dom key，唯一标识
+    const key = element.key
+    let child = currentFirstFiber
+    // 【docs/15-updateReducer/image.png】中对应的判断逻辑
+    while (child !== null) {
+      // 判断老fiber对应的key与虚拟dom对应的key是否一样
+      if (child.key === key) {
+        // 判断老fiber对应的类型与虚拟dom对应的类型是否一样
+        if (child.type === element.type) {
+          // 如果key一样、type也一样，则认为此节点可以复用
+          const existing = useFiber(child, element.props)
+          existing.return = returnFiber
+          return existing
+        }
+      }
+      child = child.sibling
+    }
     // 初次挂载，老节点currentFirstFiber是没有的，所以可以直接根据虚拟dom创建新的fiber节点
     // 也就是把虚拟 DOM element 转换成新的 Fiber 节点
     const created = createFiberFromElement(element)
@@ -31,7 +67,7 @@ function createChildReconciler(shouldTrackSideEffects) {
    */
   function placeSingleChild(newFiber) {
     // 为true说明要添加副作用
-    if (shouldTrackSideEffects) {
+    if (shouldTrackSideEffects && newFiber.alternate === null) {
       // 要在最后的提交阶段插入此节点
       // react渲染分成渲染（创建fiber树）和提交（更新真实dom->增删改）两个阶段
       newFiber.flags |= Placement
@@ -74,10 +110,10 @@ function createChildReconciler(shouldTrackSideEffects) {
 
   /**
    * 遍历newChildren，创建子fiber，把它们连成兄弟链，最后返回第一个子 Fiber
-   * @param {*} returnFiber 
-   * @param {*} currentFirstFiber 
-   * @param {*} newChildren 
-   * @returns 
+   * @param {*} returnFiber
+   * @param {*} currentFirstFiber
+   * @param {*} newChildren
+   * @returns
    */
   function reconcileChildArray(returnFiber, currentFirstFiber, newChildren) {
     // 返回的第一个新儿子

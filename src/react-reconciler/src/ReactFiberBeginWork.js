@@ -84,9 +84,28 @@ function mountIndeterminateComponent(current, workInProgress, Component) {
   // value就是函数组件返回的虚拟dom
   // renderWithHooks内部相当于是在：const value = Component(props)，只是因为有hooks的逻辑需要单独抽离
   const value = renderWithHooks(current, workInProgress, Component, props)
+  // 初次加载的时候不知道类型，走IndeterminateComponent，然后后续走FunctionComponent
+  // type不变，都是函数组件，只是tag变了
   workInProgress.tag = FunctionComponent
   // 协调子节点，和上面的 updateHostRoot 方法中的一样
   reconcileChildren(current, workInProgress, value)
+  return workInProgress.child
+}
+
+export function updateFunctionComponent(
+  current,
+  workInProgress,
+  Component,
+  nextProps
+) {
+  const nextChildren = renderWithHooks(
+    current,
+    workInProgress,
+    Component,
+    nextProps
+  )
+  // 协调子节点，和上面的 updateHostRoot 方法中的一样
+  reconcileChildren(current, workInProgress, nextChildren)
   return workInProgress.child
 }
 
@@ -106,6 +125,16 @@ export function beginWork(current, workInProgress) {
         workInProgress,
         workInProgress.type
       )
+    case FunctionComponent: {
+      const Component = workInProgress.type
+      const nextProps = workInProgress.pendingProps
+      return updateFunctionComponent(
+        current,
+        workInProgress,
+        Component,
+        nextProps
+      )
+    }
     case HostRoot:
       return updateHostRoot(current, workInProgress)
     case HostComponent:
