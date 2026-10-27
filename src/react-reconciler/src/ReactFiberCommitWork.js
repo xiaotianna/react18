@@ -1,9 +1,15 @@
 import {
   appendChild,
-  insertBefore
+  insertBefore,
+  commitUpdate
 } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
-import { MutationMask, Placement } from './ReactFiberFlags'
-import { FunctionComponent, HostComponent, HostRoot, HostText } from './ReactWorkTags'
+import { MutationMask, Placement, Update } from './ReactFiberFlags'
+import {
+  FunctionComponent,
+  HostComponent,
+  HostRoot,
+  HostText
+} from './ReactWorkTags'
 
 /**
  * 递归遍历子树，处理后代 Fiber 的 mutation 副作用
@@ -147,15 +153,48 @@ function insertOrAppendPlacementNode(node, before, parent) {
  * @param {*} root 根节点
  */
 export function commitMutationEffectsOnFiber(finishedWork, root) {
+  // 当前fiber的老fiber
+  const current = finishedWork.alternate
+  const flags = finishedWork.flags
   switch (finishedWork.tag) {
     case FunctionComponent:
     case HostRoot:
-    case HostComponent:
     case HostText:
       // 遍历它们的子节点，处理它们子节点上的副作用
       recursivelyTraverseMutaionsEffects(root, finishedWork)
       // 再处理自己身上的副作用
       commitReconciliationEffects(finishedWork)
+      break
+    case HostComponent:
+      // 这两步和上面一样，只是原生节点需要需要dom的更新
+      recursivelyTraverseMutaionsEffects(root, finishedWork)
+      commitReconciliationEffects(finishedWork)
+      // DOM更新，在【CompleteWork】的updateHostComponent中，添加了markUpdate，就能判断是否有Update
+      // 完成阶段：发现属性差异 → 保存清单 → 标记 Update
+      // 提交阶段：发现 Update → 取出清单 → 更新 DOM
+      if (flags & Update) {
+        // 获取真实dom
+        const instance = finishedWork.stateNode
+        // 更新真实dom
+        if (instance !== null) {
+          const newProps = finishedWork.memoizedProps
+          const oldProps = current !== null ? current.memoizedProps : newProps
+          const type = finishedWork.type
+          // 原生组件的更新队列中存放的是待更新的属性
+          const updatePayload = finishedWork.updateQueue
+          finishedWork.updateQueue = null
+          if (updatePayload) {
+            commitUpdate(
+              instance,
+              updatePayload,
+              type,
+              oldProps,
+              newProps,
+              finishedWork
+            )
+          }
+        }
+      }
       break
     default:
       break

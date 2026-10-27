@@ -1,10 +1,16 @@
 import { logger } from 'shared/logger'
-import { HostComponent, HostRoot, HostText } from './ReactWorkTags'
+import {
+  HostComponent,
+  HostRoot,
+  HostText,
+  FunctionComponent
+} from './ReactWorkTags'
 import {
   createTextInstance,
   createInstance,
   appendInitialChild,
-  finializeInitiailChildren
+  finializeInitiailChildren,
+  prepareUpdate
 } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
 import { NoFlags, Update } from './ReactFiberFlags'
 
@@ -94,6 +100,10 @@ export function completeWork(current, workInProgress) {
         workInProgress.stateNode = instance
         finializeInitiailChildren(instance, type, newProps)
       }
+      // 向上冒泡属性
+      bubbleProperties(workInProgress)
+      break
+    case FunctionComponent: // 函数组件
       // 向上冒泡属性
       bubbleProperties(workInProgress)
       break
