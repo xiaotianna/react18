@@ -13,11 +13,66 @@ let workInProgressHook = null
 let currentHook = null
 
 const HooksDispatcherOnMount = {
-  useReducer: mountReducer
+  useReducer: mountReducer,
+  useState: mountState
 }
 
 const HooksDispatcherOnUpdate = {
-  useReducer: updateReducer
+  useReducer: updateReducer,
+  useState: updateState
+}
+
+// useState其实就是一个内置了reducer的useReducer
+function baseStateReducer(state, action) {
+  return typeof action === 'function' ? action(state) : action
+}
+
+function updateState() {
+  return updateReducer(baseStateReducer)
+}
+
+/**
+ * 这个方法也可以使用这一行代码来代替：
+ * return mountReducer(baseStateReducer, initialState)
+ * 但是没有复用的原因是：做了一个优化
+ * 当使用useState的时候，调用setNumber传入的状态是老状态，则不需要更新
+ */
+function mountState(initialState) {
+  const hook = mountWorkInProgressHook()
+  hook.memoizedState = initialState
+  const queue = {
+    pending: null,
+    dispatch: null,
+    lastRenderedReducer: baseStateReducer, // 上一个reducer（优化）
+    lastRenderedState: initialState // 上一个state（优化）
+  }
+  hook.queue = queue
+  const dispatch = (queue.dispatch = dispatchSetState.bind(
+    null,
+    currentRenderingFiber,
+    queue
+  ))
+  return [hook.memoizedState, dispatch]
+}
+
+function dispatchSetState(fiber, queue, action) {
+  const update = {
+    action,
+    hasEagerState: false, // 是否有急切的更新
+    eagerState: null, // 急切的更新状态
+    next: null
+  }
+  // 当派发action后，立即用上一次的reducer和state去计算新状态
+  const { lastRenderedReducer, lastRenderedState } = queue
+  const eagerState = lastRenderedReducer(lastRenderedState, action)
+  update.hasEagerState = true
+  update.eagerState = eagerState
+  if (Object.is(eagerState, lastRenderedState)) {
+    return
+  }
+  // 下面是真正的入队更新，并调度更新逻辑
+  const root = enqueueConcurrentHookUpdate(fiber, queue, update)
+  scheduleUpdateOnFiber(root)
 }
 
 /**
@@ -44,8 +99,13 @@ function updateReducer(reducer) {
     const firstQueue = pendingQueue.next
     let update = firstQueue
     do {
-      const action = update.action
-      newState = reducer(newState, action)
+      // 优化，如果针对updateState的话，如果dispatchSetState计算过了就不用重新计算了
+      if (update.eagerState) {
+        newState = update.eagerState
+      } else {
+        const action = update.action
+        newState = reducer(newState, action)
+      }
       update = update.next
     } while (update !== null && update !== firstQueue)
   }
@@ -130,7 +190,7 @@ function dispatchReducerAction(fiber, queue, action) {
   }
   // 把当前最新的更新添加到更新队列中，返回当前的根fiber
   const root = enqueueConcurrentHookUpdate(fiber, queue, update)
-  // 安排更新任务
+  // 安排更新任务（在此触发重新渲染）
   scheduleUpdateOnFiber(root)
 }
 
