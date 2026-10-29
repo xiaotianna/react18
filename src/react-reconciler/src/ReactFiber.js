@@ -45,6 +45,22 @@ export function FiberNode(tag, pendingProps, key) {
   this.subtreeFlags = NoFlags
   // 轮替作用，供双缓冲中使用（dom diff部分）
   this.alternate = null
+
+  /**
+   * 存放将要删除的子fiber，协调时发现需要删除的节点，就把它们放进去
+   * ---
+   * 为什么要额外保存？
+   * 因为新 Fiber 树的子链表里只剩 B，提交阶段遍历新树时，已经无法沿 child、sibling 找到 A、C，
+   * 所以需要父 Fiber 通过 deletions 记住它们。
+   * ---
+   * 例如：
+   *  旧子节点：A → B → C
+      新子元素：B
+   * 新父 Fiber 上会形成：
+      parentFiber.child = 本轮复用的BFiber
+      parentFiber.deletions = [旧AFiber, 旧CFiber]
+   */
+  this.deletions = null
 }
 
 export function createFiber(tag, pendingProps, key) {

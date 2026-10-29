@@ -1,7 +1,8 @@
 import {
   appendChild,
   insertBefore,
-  commitUpdate
+  commitUpdate,
+  removeChild
 } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
 import { MutationMask, Placement, Update } from './ReactFiberFlags'
 import {
@@ -11,12 +12,95 @@ import {
   HostText
 } from './ReactWorkTags'
 
+// 真实dom节点的父节点
+let hostParent = null
+
 /**
- * 递归遍历子树，处理后代 Fiber 的 mutation 副作用
+ * 提交删除副作用
+ * @param {*} root 根节点
+ * @param {*} returnFiber 父fiber，但实际的参数却是当前fiber
+ * @param {*} deletedFiber 删除的fiber
+ */
+function commitDeletionEffects(root, returnFiber, deletedFiber) {
+  let parent = returnFiber
+  // 一直向上查找，找到真实dom节点为止
+  findParent: while (parent !== null) {
+    switch (parent.tag) {
+      case HostComponent: {
+        hostParent = parent.stateNode
+        break findParent
+      }
+      case HostRoot: {
+        hostParent = parent.stateNode.containerInfo
+        break findParent
+      }
+    }
+    parent = parent.return
+  }
+  // 处理传入的旧 Fiber 的删除
+  commitDeletionEffectsOnFiber(root, returnFiber, deletedFiber)
+  hostParent = null
+}
+
+function commitDeletionEffectsOnFiber(
+  finishedRoot,
+  nearestMountedAnceston,
+  deletedFiber
+) {
+  switch (deletedFiber.tag) {
+    case HostComponent:
+    case HostText: {
+      // 当要删除一个节点的时候，要先删除它的子节点
+      recursivelyTraverseDeletionEffects(
+        finishedRoot,
+        nearestMountedAnceston,
+        deletedFiber
+      )
+      // 再删除自己
+      if (hostParent !== null) {
+        removeChild(hostParent, deletedFiber.stateNode)
+      }
+      break
+    }
+    default:
+      break
+  }
+}
+
+/**
+ * 递归遍历删除副作用
+ * @param {*} finishedRoot
+ * @param {*} nearestMountedAnceston
+ * @param {*} parent
+ */
+function recursivelyTraverseDeletionEffects(
+  finishedRoot,
+  nearestMountedAnceston,
+  parent
+) {
+  let child = parent.child
+  while (child !== null) {
+    commitDeletionEffectsOnFiber(finishedRoot, nearestMountedAnceston, child)
+    child = child.sibling
+  }
+}
+
+/**
+ * 先处理当前 Fiber 记录的子节点删除任务，
+ * 再根据 subtreeFlags 按需递归遍历子树，处理后代 Fiber 的 mutation 副作用
  * @param {*} root FiberRoot 对象
- * @param {*} parentFiber 当前遍历的父 Fiber
+ * @param {*} parentFiber 当前遍历的 Fiber（这里虽然是叫parentFiber，但是传入的是finishedWork，并非finishedWork.return）
  */
 function recursivelyTraverseMutaionsEffects(root, parentFiber) {
+  const deletions = parentFiber.deletions
+  // 先处理当前 Fiber 记录的待删除子节点
+  if (deletions !== null) {
+    for (let i = 0; i < deletions.length; i++) {
+      const childToDelete = deletions[i]
+      commitDeletionEffects(root, parentFiber, childToDelete)
+    }
+  }
+  // 子树存在 MutationMask 包含的副作用时，继续遍历
   if (parentFiber.subtreeFlags & MutationMask) {
     let { child } = parentFiber
     while (child !== null) {

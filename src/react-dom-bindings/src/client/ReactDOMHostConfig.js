@@ -1,4 +1,8 @@
-import { setInitiailProperties, diffProperties, updateProperties } from './ReactDOMComponent'
+import {
+  setInitiailProperties,
+  diffProperties,
+  updateProperties
+} from './ReactDOMComponent'
 import { precacheFiberNode, updateFiberProps } from './ReactDOMComponentTree'
 
 // 判断当前的虚拟dom是否是纯文本
@@ -63,4 +67,8 @@ export function commitUpdate(
   // 执行之前收集的 DOM 更新
   updateProperties(domElement, updatePayload, type, oldProps, newProps)
   updateFiberProps(domElement, newProps)
+}
+
+export function removeChild(parentInstance, child) {
+  parentInstance.removeChild(child)
 }

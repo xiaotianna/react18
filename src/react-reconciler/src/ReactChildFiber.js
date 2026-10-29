@@ -4,7 +4,7 @@ import {
   createFiberFromText,
   createWorkInProgress
 } from './ReactFiber'
-import { Placement } from './ReactFiberFlags'
+import { ChildDeletion, Placement } from './ReactFiberFlags'
 import isArray from 'shared/isArray'
 
 /**
@@ -27,6 +27,37 @@ function createChildReconciler(shouldTrackSideEffects) {
   }
 
   /**
+   * 记录待删除的旧子 Fiber，同时需要在父fiber上添加deletions
+   * @param {*} returnFiber 本轮正在构建的父 Fiber（workInProgress）
+   * @param {*} childToDelete 需要删除的老的子节点
+   */
+  function deleteChild(returnFiber, childToDelete) {
+    if (!shouldTrackSideEffects) {
+      return
+    }
+    const deletions= returnFiber.deletions
+    if (deletions === null) {
+      returnFiber.deletions = [childToDelete]
+      returnFiber.flags |= ChildDeletion
+    } else {
+      returnFiber.deletions.push(childToDelete)
+    }
+  }
+
+  // 删除currentFirstFiber之后所有的fiber节点，包括自己
+  function deleteRemainingChildren(returnFiber, currentFirstFiber) {
+    if (!shouldTrackSideEffects) {
+      return
+    }
+    let childToDelete = currentFirstFiber
+    while(childToDelete !== null) {
+      deleteChild(returnFiber, childToDelete)
+      childToDelete = childToDelete.sibling
+    }
+    return null
+  }
+
+  /**
    * 根据单个虚拟dom创建fiber，并让它指向父fiber，最后返回该fiber
    * @param {*} returnFiber 新的父fiber（workInProgress）
    * @param {*} currentFirstFiber 老fiber的第一个子fiber
@@ -44,11 +75,25 @@ function createChildReconciler(shouldTrackSideEffects) {
       if (child.key === key) {
         // 判断老fiber对应的类型与虚拟dom对应的类型是否一样
         if (child.type === element.type) {
+          // 优化：因为当前是单节点，新子元素只有一个，找到可复用节点后，其余旧兄弟必定都要删除
+          deleteRemainingChildren(returnFiber, child.sibling)
           // 如果key一样、type也一样，则认为此节点可以复用
           const existing = useFiber(child, element.props)
           existing.return = returnFiber
           return existing
+        } else {
+          /**
+           * 如果找到了key一样的老fiber，但类型不一样，需要删除自己和自己的兄弟
+           * 和child.key === key执行deleteChild的区别是：
+           * 1、首先是单节点diff，外层key不同，但是兄弟的key、type可能会相同，所以只删除自己
+           * 2、deleteRemainingChildren是因为key、type都不相同了，而且key是唯一的，又是单节点，那兄弟肯定不同
+           *    所以需要循环把兄弟都删除后，break
+           */
+          deleteRemainingChildren(returnFiber, child)
+          break
         }
+      } else {
+        deleteChild(returnFiber, child)
       }
       child = child.sibling
     }

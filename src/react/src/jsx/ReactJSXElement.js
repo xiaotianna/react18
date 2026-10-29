@@ -1,10 +1,6 @@
 import hasOwnProperty from 'shared/hasOwnProperty'
 import { REACT_ELEMENT_TYPE } from 'shared/ReactSymbols'
 
-function hasVaildKey(config) {
-  return config.key !== undefined
-}
-
 function hasVaildRef(config) {
   return config.ref !== undefined
 }
@@ -17,12 +13,12 @@ const RESERVED_PROPS = {
   __source: true
 }
 
-export function jsxDEV(type, config) {
+export function jsxDEV(type, config, maybeKey) {
   const props = {} // 属性对象
   let key = null // 每个虚拟dom可以有一个可选的key属性，用来区分一个父节点下的不同子节点
   let ref = null // 后面可以通过ref获取到真实的dom
-  if (hasVaildKey(config)) {
-    key = config.key
+  if (typeof maybeKey !== 'undefined') {
+    key = maybeKey
   }
   if (hasVaildRef(config)) {
     ref = config.ref
