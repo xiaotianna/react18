@@ -6,7 +6,8 @@ import { MutationMask, NoFlags, Passive } from './ReactFiberFlags'
 import {
   commitMutationEffectsOnFiber,
   commitPassiveUnmountEffects,
-  commitPassiveMountEffects
+  commitPassiveMountEffects,
+  commitLayoutEffects
 } from './ReactFiberCommitWork'
 import { finishQueueingConcurrentUpdates } from './ReactFiberConcurrentUpdates'
 
@@ -88,6 +89,8 @@ function commitRoot(root) {
   if (subtreeHasEffects || rootHasEffect) {
     // 提交dom变更，先修改真实 DOM
     commitMutationEffectsOnFiber(finishedWork, root)
+    // 执行layoutEffect
+    commitLayoutEffects(finishedWork, root)
     // 记录待处理的根节点，重置标记
     if (rootDoesHavePassiveEffect) {
       rootDoesHavePassiveEffect = false

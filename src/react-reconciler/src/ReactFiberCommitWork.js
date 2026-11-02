@@ -4,7 +4,13 @@ import {
   commitUpdate,
   removeChild
 } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
-import { MutationMask, Passive, Placement, Update } from './ReactFiberFlags'
+import {
+  LayoutMask,
+  MutationMask,
+  Passive,
+  Placement,
+  Update
+} from './ReactFiberFlags'
 import {
   FunctionComponent,
   HostComponent,
@@ -13,7 +19,8 @@ import {
 } from './ReactWorkTags'
 import {
   HasEffect as HookHasEffect,
-  Passive as HookPassive
+  Passive as HookPassive,
+  Layout as HookLayout
 } from './ReactHookEffectTags'
 
 // 真实dom节点的父节点
@@ -245,7 +252,18 @@ export function commitMutationEffectsOnFiber(finishedWork, root) {
   const current = finishedWork.alternate
   const flags = finishedWork.flags
   switch (finishedWork.tag) {
-    case FunctionComponent:
+    case FunctionComponent: {
+      // 遍历它们的子节点，处理它们子节点上的副作用
+      recursivelyTraverseMutaionsEffects(root, finishedWork)
+      // 再处理自己身上的副作用
+      commitReconciliationEffects(finishedWork)
+      if (flags & Update) {
+        // 同步执行本轮需要重新运行的 useLayoutEffect 的旧清理函数
+        // useEffect是异步的在flushPassiveEffect中执行
+        commitHookEffectListUnmount(HookHasEffect | HookLayout, finishedWork)
+      }
+      break
+    }
     case HostRoot:
     case HostText:
       // 遍历它们的子节点，处理它们子节点上的副作用
@@ -409,4 +427,45 @@ function commitHookEffectListMount(flags, finishedWork) {
       effect = effect.next
     } while (effect !== firstEffect)
   }
+}
+
+export function commitLayoutEffects(finishedWork, root) {
+  const current = finishedWork.alternate
+  commitLayoutEffectOnFiber(root, current, finishedWork)
+}
+
+// 递归：在 layout 阶段，先处理子节点，再处理当前函数组件本轮需要执行的 useLayoutEffect 回调
+function commitLayoutEffectOnFiber(finishedRoot, current, finishedWork) {
+  const flags = finishedWork.flags
+  switch (finishedWork.tag) {
+    case HostRoot: {
+      // 根节点自身没有 useLayoutEffect，继续处理子节点
+      recursivelyTraverseLayoutEffects(finishedRoot, finishedWork)
+      break
+    }
+    case FunctionComponent: {
+      // 先处理子节点中的 useLayoutEffect
+      recursivelyTraverseLayoutEffects(finishedRoot, finishedWork)
+      if (flags & LayoutMask) {
+        // 再处理当前组件本轮需要执行的 useLayoutEffect 的 create
+        commitHookLayoutEffects(finishedWork, HookHasEffect | HookLayout)
+      }
+      break
+    }
+  }
+}
+
+function recursivelyTraverseLayoutEffects(root, parentFiber) {
+  if (parentFiber.subtreeFlags & LayoutMask) {
+    let child = parentFiber.child
+    while (child !== null) {
+      const current = child.alternate
+      commitLayoutEffectOnFiber(root, current, child)
+      child = child.sibling
+    }
+  }
+}
+
+function commitHookLayoutEffects(finishedWork, hookFlags) {
+  commitHookEffectListMount(hookFlags, finishedWork)
 }
