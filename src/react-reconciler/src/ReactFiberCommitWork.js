@@ -4,13 +4,17 @@ import {
   commitUpdate,
   removeChild
 } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
-import { MutationMask, Placement, Update } from './ReactFiberFlags'
+import { MutationMask, Passive, Placement, Update } from './ReactFiberFlags'
 import {
   FunctionComponent,
   HostComponent,
   HostRoot,
   HostText
 } from './ReactWorkTags'
+import {
+  HasEffect as HookHasEffect,
+  Passive as HookPassive
+} from './ReactHookEffectTags'
 
 // 真实dom节点的父节点
 let hostParent = null
@@ -282,5 +286,127 @@ export function commitMutationEffectsOnFiber(finishedWork, root) {
       break
     default:
       break
+  }
+}
+
+export function commitPassiveUnmountEffects(finishedWork) {
+  commitPassiveUnmountOnFiber(finishedWork)
+}
+
+// 根据当前 Fiber 的类型，先遍历子节点，再安排当前组件的 effect 清理
+function commitPassiveUnmountOnFiber(finishedWork) {
+  const flags = finishedWork.flags
+  switch (finishedWork.tag) {
+    case HostRoot: {
+      // 根节点自身没有 useEffect，所以继续向下遍历，寻找需要清理副作用的函数组件
+      recursivelyTraversePassiveUnmountEffects(finishedWork)
+      break
+    }
+    case FunctionComponent: {
+      // 先处理子节点中的 effect 清理（递归处理）
+      recursivelyTraversePassiveUnmountEffects(finishedWork)
+      // 判断当前组件是否有本轮需要处理的 useEffect
+      if (flags & Passive) {
+        commitHookPassiveUnmountEffects(
+          finishedWork,
+          HookHasEffect | HookPassive
+        )
+      }
+      break
+    }
+  }
+}
+
+function recursivelyTraversePassiveUnmountEffects(parentFiber) {
+  if (parentFiber.subtreeFlags & Passive) {
+    let child = parentFiber.child
+    while (child !== null) {
+      commitPassiveUnmountOnFiber(child)
+      child = child.sibling
+    }
+  }
+}
+
+function commitHookPassiveUnmountEffects(finishedWork, hookFlags) {
+  commitHookEffectListUnmount(hookFlags, finishedWork)
+}
+
+/**
+ * 遍历当前函数组件的 effect 环形链表，执行符合条件的清理函数 destroy
+ * @param {*} flags 用于筛选 effect 的标记，这里传入的是 HookHasEffect | HookPassive
+ * @param {*} finishedWork 当前函数组件的 Fiber
+ */
+function commitHookEffectListUnmount(flags, finishedWork) {
+  const updateQueue = finishedWork.updateQueue
+  // fiber.updateQueue的数据结构：就是fiber.updateQueue.lastEffect指向这个effect链表
+  const lastEffect = updateQueue !== null ? updateQueue.lastEffect : null
+  if (lastEffect !== null) {
+    const firstEffect = lastEffect.next
+    let effect = firstEffect
+    do {
+      // 判断当前 effect 是否需要清理
+      if ((effect.tag & flags) === flags) {
+        const destroy = effect.destroy
+        if (destroy !== undefined) {
+          destroy()
+        }
+      }
+      effect = effect.next
+    } while (effect !== firstEffect)
+  }
+}
+
+export function commitPassiveMountEffects(root, finishedWork) {
+  commitPassiveMountOnFiber(root, finishedWork)
+}
+
+// 先遍历子节点，再处理当前函数组件本轮需要执行的 useEffect 回调
+function commitPassiveMountOnFiber(finishedRoot, finishedWork) {
+  const flags = finishedWork.flags
+  switch (finishedWork.tag) {
+    case HostRoot: {
+      // 根节点自身没有 useEffect，继续处理子节点
+      recursivelyTraversePassiveMountEffects(finishedRoot, finishedWork)
+      break
+    }
+    case FunctionComponent: {
+      // 先处理子节点中的 useEffect
+      recursivelyTraversePassiveMountEffects(finishedRoot, finishedWork)
+      if (flags & Passive) {
+        // 再处理当前组件本轮需要执行的 useEffect
+        commitHookPassiveMountEffects(finishedWork, HookHasEffect | HookPassive)
+      }
+      break
+    }
+  }
+}
+
+function recursivelyTraversePassiveMountEffects(root, parentFiber) {
+  if (parentFiber.subtreeFlags & Passive) {
+    let child = parentFiber.child
+    while (child !== null) {
+      commitPassiveMountOnFiber(root, child)
+      child = child.sibling
+    }
+  }
+}
+
+function commitHookPassiveMountEffects(finishedWork, hookFlags) {
+  commitHookEffectListMount(hookFlags, finishedWork)
+}
+
+function commitHookEffectListMount(flags, finishedWork) {
+  const updateQueue = finishedWork.updateQueue
+  const lastEffect = updateQueue !== null ? updateQueue.lastEffect : null
+  if (lastEffect !== null) {
+    const firstEffect = lastEffect.next
+    let effect = firstEffect
+    do {
+      if ((effect.tag & flags) === flags) {
+        const create = effect.create
+        effect.destroy = create()
+      }
+      effect = effect.next
+    } while (effect !== firstEffect)
   }
 }

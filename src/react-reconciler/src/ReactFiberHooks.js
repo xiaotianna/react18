@@ -1,6 +1,11 @@
 import ReactSharedInternals from 'shared/ReactSharedInternals'
 import { scheduleUpdateOnFiber } from './ReactFiberWorkLoop'
 import { enqueueConcurrentHookUpdate } from './ReactFiberConcurrentUpdates'
+import { Passive as PassiveEffect } from './ReactFiberFlags'
+import {
+  HasEffect as HookHasEffect,
+  Passive as HookPassive
+} from './ReactHookEffectTags'
 
 const { ReactCurrentDispatcher } = ReactSharedInternals
 
@@ -14,12 +19,127 @@ let currentHook = null
 
 const HooksDispatcherOnMount = {
   useReducer: mountReducer,
-  useState: mountState
+  useState: mountState,
+  useEffect: mountEffect
 }
 
 const HooksDispatcherOnUpdate = {
   useReducer: updateReducer,
-  useState: updateState
+  useState: updateState,
+  useEffect: updateEffect
+}
+
+function updateEffect(create, deps) {
+  return updateEffectImpl(PassiveEffect, HookPassive, create, deps)
+}
+// 在组件更新时比较新旧依赖，决定这个 effect 本轮是否需要执行，再通过 pushEffect 保存它
+function updateEffectImpl(fiberFlags, hookFlags, create, deps) {
+  const hook = updateWorkInProgressHook()
+  const nextDeps = deps === undefined ? null : deps
+  let destroy
+  // 上一个老hook
+  if (currentHook !== null) {
+    // 从旧 effect 中取出清理函数
+    // 上一次回调返回的清理函数，需要传给新 effect，让后续提交阶段能够调用它
+    const prevEffect = currentHook.memoizedState
+    destroy = prevEffect.destroy
+    if (nextDeps !== null) {
+      const prevDeps = prevEffect.deps
+      // 用新依赖数组和老数组进行对比，如果一样的就不执行effect
+      if (areHookInputsEqual(nextDeps, prevDeps)) {
+        // hookFlags：当前 useEffect 对应 HookPassive
+        // 没有加 HookHasEffect，提交阶段就会跳过这个 effect，本轮不执行清理函数和新回调
+        hook.memoizedState = pushEffect(hookFlags, create, destroy, nextDeps)
+        return
+      }
+    }
+  }
+  // 需要执行时，给 Fiber 和 effect 分别打标记
+  currentRenderingFiber.flags |= fiberFlags
+  hook.memoizedState = pushEffect(
+    HookHasEffect | hookFlags,
+    create,
+    destroy,
+    nextDeps
+  )
+}
+
+function areHookInputsEqual(nextDeps, prevDeps) {
+  if (prevDeps === null) {
+    return null
+  }
+  for (let i = 0; i < prevDeps.length && i < nextDeps.length; i++) {
+    if (Object.is(nextDeps[i], prevDeps[i])) {
+      continue
+    }
+    return false
+  }
+  return true
+}
+
+function mountEffect(create, deps) {
+  return mountEffectImpl(PassiveEffect, HookPassive, create, deps)
+}
+
+// 首次渲染时创建一个 Effect，挂到当前函数组件的 Fiber 上，等待后续执行
+function mountEffectImpl(fiberFlags, hookFlags, create, deps) {
+  const hook = mountWorkInProgressHook()
+  const nextDeps = deps === undefined ? null : deps
+  // 给当前的函数组件fiber添加flags（PassiveEffect）
+  currentRenderingFiber.flags |= fiberFlags
+  // hook的memoizedState执行effect【如图docs/20-useEffect/image.png】
+  hook.memoizedState = pushEffect(
+    HookHasEffect | hookFlags,
+    create,
+    undefined,
+    nextDeps
+  )
+}
+
+/**
+ * 创建一个 effect 对象，把它加入当前函数组件的 effect 环形链表，然后返回这个对象
+ * @param {*} tag effect 的类型，以及本轮是否需要执行
+ * @param {*} create 传给 useEffect 的回调
+ * @param {*} destroy 上一次回调返回的清理函数，首次挂载时为 undefined
+ * @param {*} deps 依赖数组
+ */
+function pushEffect(tag, create, destroy, deps) {
+  // 创建 effect 节点，先保存回调等信息，回调会在后续提交阶段执行
+  const effect = {
+    tag,
+    create,
+    destroy,
+    deps,
+    next: null
+  }
+  // 当前组件的队列，其中 lastEffect 始终指向最后一个 effect
+  let componentUpdateQueue = currentRenderingFiber.updateQueue
+  if (componentUpdateQueue === null) {
+    // 队列不存在，先创建，然后再把effect指向自己
+    componentUpdateQueue = createFunctionComponentUpdateQueue() // 有updateQueue的数据结构
+    currentRenderingFiber.updateQueue = componentUpdateQueue
+    effect.next = effect
+    componentUpdateQueue.lastEffect = effect
+  } else {
+    const lastEffect = componentUpdateQueue.lastEffect
+    if (lastEffect === null) {
+      effect.next = effect
+      componentUpdateQueue.lastEffect = effect
+    } else {
+      // 已有节点，追加到尾部（和之前的环剪开，再追加一样）
+      const firstEffect = lastEffect.next
+      lastEffect.next = effect
+      effect.next = firstEffect
+      componentUpdateQueue.lastEffect = effect
+    }
+  }
+  return effect
+}
+
+function createFunctionComponentUpdateQueue() {
+  return {
+    lastEffect: null
+  }
 }
 
 // useState其实就是一个内置了reducer的useReducer
@@ -229,6 +349,8 @@ function mountWorkInProgressHook() {
 export function renderWithHooks(current, workInProgress, Component, props) {
   // 函数组件对应的fiber
   currentRenderingFiber = workInProgress
+  // 每次渲染前需要把更新队列清空
+  workInProgress.updateQueue = null
   if (current !== null && current.memoizedState !== null) {
     // 如果有老fiber，并且有老的hook链表，表示更新
     ReactCurrentDispatcher.current = HooksDispatcherOnUpdate

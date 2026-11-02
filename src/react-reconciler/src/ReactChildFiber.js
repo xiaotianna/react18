@@ -165,6 +165,7 @@ function createChildReconciler(shouldTrackSideEffects) {
       // 进行比较，返回大者
       if (oldIndex < lastPlacedIndex) {
         // 标记移动，说明它原来排在前面某个节点之前，现在却要排在那个节点之后
+        // 没有专门的移动标识，对于老节点的插入来说，就是移动
         newFiber.flags |= Placement
         return lastPlacedIndex
       } else {

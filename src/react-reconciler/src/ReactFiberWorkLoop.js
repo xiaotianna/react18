@@ -2,25 +2,21 @@ import { scheduleCallback } from 'scheduler'
 import { createWorkInProgress } from './ReactFiber'
 import { beginWork } from './ReactFiberBeginWork'
 import { completeWork } from './ReactFiberCompleteWork'
+import { MutationMask, NoFlags, Passive } from './ReactFiberFlags'
 import {
-  ChildDeletion,
-  MutationMask,
-  NoFlags,
-  Placement,
-  Update
-} from './ReactFiberFlags'
-import { commitMutationEffectsOnFiber } from './ReactFiberCommitWork'
-import {
-  FunctionComponent,
-  HostComponent,
-  HostRoot,
-  HostText
-} from './ReactWorkTags'
+  commitMutationEffectsOnFiber,
+  commitPassiveUnmountEffects,
+  commitPassiveMountEffects
+} from './ReactFiberCommitWork'
 import { finishQueueingConcurrentUpdates } from './ReactFiberConcurrentUpdates'
 
 // 当前正在处理的 Fiber 节点；没有工作时为 null
 let workInProgress = null
 let workInProgressRoot = null
+// 此根节点上是否有useEffect的副作用
+let rootDoesHavePassiveEffect = false
+// 具有useEffect副作用的根节点 => FiberRootNode 也就是根fiber.stateNode
+let rootWithPendingPassiveEffect = null
 
 /**
  * 计划更新root
@@ -55,9 +51,34 @@ function performConcurrentWorkOnRoot(root) {
   workInProgressRoot = null
 }
 
+// 异步执行，需要等待commitRoot执行完成后执行（但也需要等浏览器空闲才执行）
+// 也就是当真实dom更新后，再执行该函数内容
+function flushPassiveEffect() {
+  if (rootWithPendingPassiveEffect !== null) {
+    const root = rootWithPendingPassiveEffect
+    // 下面的两步其实就是：当函数更新的时候，执行destroy，以及执行effect的create
+    // 先执行需要清理的 effect 的 destroy
+    commitPassiveUnmountEffects(root.current)
+    // 再执行本轮需要运行的 effect 的 create
+    commitPassiveMountEffects(root, root.current)
+  }
+}
+
 function commitRoot(root) {
   const { finishedWork } = root
-  __print__finishedWork(finishedWork)
+  // 发现需要处理的 useEffect，安排任务
+  if (
+    (finishedWork.subtreeFlags & Passive) !== NoFlags ||
+    (finishedWork.flags & Passive) !== NoFlags
+  ) {
+    // 本轮已经安排了处理被动副作用的任务。为 true 时跳过重复安排
+    if (!rootDoesHavePassiveEffect) {
+      rootDoesHavePassiveEffect = true
+      // 异步执行，在commitRoot的commitMutationEffectsOnFiber执行完成后执行
+      // 也就是当dom更新后，执行回调，可以看【docs/20-useEffect/index.md #`src/react-reconciler/src/ReactFiberWorkLoop.js`】
+      scheduleCallback(flushPassiveEffect)
+    }
+  }
   // 判断子树是否有副作用
   const subtreeHasEffects =
     (finishedWork.subtreeFlags & MutationMask) !== NoFlags
@@ -65,7 +86,13 @@ function commitRoot(root) {
   const rootHasEffect = (finishedWork.flags & MutationMask) !== NoFlags
   // 如果自己有副作用或者子节点有副作用，就进行提交dom操作
   if (subtreeHasEffects || rootHasEffect) {
+    // 提交dom变更，先修改真实 DOM
     commitMutationEffectsOnFiber(finishedWork, root)
+    // 记录待处理的根节点，重置标记
+    if (rootDoesHavePassiveEffect) {
+      rootDoesHavePassiveEffect = false
+      rootWithPendingPassiveEffect = root
+    }
   }
   // 等dom变更后，就可以把root的current指向新的fiber树
   root.current = finishedWork
@@ -143,54 +170,4 @@ function completeUnitOfWork(unitOfWork) {
       workInProgress = completedWork
     }
   } while (completedWork !== null)
-}
-
-function __print__finishedWork(fiber) {
-  let child = fiber.child
-  while (child) {
-    __print__finishedWork(child)
-    child = child.sibling
-  }
-  if (fiber.flags !== 0) {
-    console.log(
-      getFlags(fiber),
-      getTag(fiber.tag),
-      typeof fiber.type === 'function' ? fiber.type.name : fiber.type,
-      fiber.memoizedProps
-    )
-  }
-}
-
-function getFlags(fiber) {
-  const { flags, deletions } = fiber
-  if (flags === Placement) {
-    return '插入'
-  }
-  if (flags === Update) {
-    return '更新'
-  }
-  if (flags === ChildDeletion) {
-    return (
-      '子节点有删除' +
-      deletions
-        .map((fiber) => `${fiber.type}#${fiber.memoizedProps.id}`)
-        .join(',')
-    )
-  }
-  return flags
-}
-
-function getTag(tag) {
-  switch (tag) {
-    case FunctionComponent:
-      return 'FunctionComponent'
-    case HostRoot:
-      return 'HostRoot'
-    case HostComponent:
-      return 'HostComponent'
-    case HostText:
-      return 'HostText'
-    default:
-      return tag
-  }
 }
