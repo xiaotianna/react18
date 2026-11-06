@@ -1,9 +1,12 @@
 import { createHostRootFiber } from './ReactFiber'
 import { initialUpdateQueue } from './ReactFiberClassUpdateQueue'
+import { NoLanes } from './ReactFiberLane'
 
 function FiberRootNode(containerInfo) {
   // 外部createRoot传递的容器信息，也就是 div#root 这个dom节点
   this.containerInfo = containerInfo
+  // 记录这个根节点下，哪些 lane 上还有更新等待处理
+  this.pendingLanes = NoLanes
 }
 
 // 创建根Fiber（FiberRootNode）

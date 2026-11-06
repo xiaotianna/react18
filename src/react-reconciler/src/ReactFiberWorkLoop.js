@@ -1,4 +1,10 @@
-import { scheduleCallback } from 'scheduler'
+import {
+  scheduleCallback as Scheduler_scheduleCallback,
+  ImmediatePriority as ImmediateSchedulerPriority,
+  UserBlockingPriority as UserBlockingSchedulerPriority,
+  NormalPriority as NormalSchedulerPriority,
+  IdlePriority as IdleSchedulerPriority
+} from './Scheduler'
 import { createWorkInProgress } from './ReactFiber'
 import { beginWork } from './ReactFiberBeginWork'
 import { completeWork } from './ReactFiberCompleteWork'
@@ -10,46 +16,108 @@ import {
   commitLayoutEffects
 } from './ReactFiberCommitWork'
 import { finishQueueingConcurrentUpdates } from './ReactFiberConcurrentUpdates'
+import {
+  NoLanes,
+  markRootUpdated,
+  getNextLanes,
+  getHighestPriorityLane,
+  SyncLane
+} from './ReactFiberLane'
+import {
+  DiscreteEventPriority,
+  ContinuousEventPriority,
+  DefaultEventPriority,
+  IdleEventPriority,
+  getCurrentUpdatePriority,
+  lanesToEventPriority
+} from './ReactEventPriority'
+import { getCurrentEventPriority } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
 
 // 当前正在处理的 Fiber 节点；没有工作时为 null
 let workInProgress = null
+// 正在构建中的根节点
 let workInProgressRoot = null
 // 此根节点上是否有useEffect的副作用
 let rootDoesHavePassiveEffect = false
 // 具有useEffect副作用的根节点 => FiberRootNode 也就是根fiber.stateNode
 let rootWithPendingPassiveEffect = null
+let workInProgressRenderLanes = NoLanes
 
 /**
  * 计划更新root
  * 在源码中此处有一个任务的功能
  * @param {*} root
  */
-export function scheduleUpdateOnFiber(root) {
-  // 确保调度执行root上的更新
+export function scheduleUpdateOnFiber(root, fiber, lane) {
+  // 在根节点上登记，这个 lane 有更新等待处理
+  // 也就是记录有哪些车道有工作（会不断累加）
+  markRootUpdated(root, lane)
+  // 确保调度执行root上的更新，也就是根据这些车道安排工作
   ensureRootIsscheduled(root)
 }
 
+// 根据根节点上的待处理更新，选出优先级，并安排执行更新的任务
 function ensureRootIsscheduled(root) {
+  // 获取当前优先级最高的车道
+  const nextLanes = getNextLanes(root, NoLanes)
+  // 获取新的调度优先级，仍然是lane值
+  let newCallbackPriority = getHighestPriorityLane(nextLanes)
+  // 如果新的优先级是同步 -> 16
+  if (newCallbackPriority === SyncLane) {
+    // 同步更新分支，目前还没实现
+  } else {
+    // 非同步，将 lane 转成事件优先级，再映射成 Scheduler 的优先级
+    let schedulerPriorityLevel
+    switch (lanesToEventPriority(nextLanes)) {
+      case DiscreteEventPriority:
+        // ImmediateSchedulerPriority：立即执行的优先级
+        schedulerPriorityLevel = ImmediateSchedulerPriority
+        break
+      case ContinuousEventPriority:
+        // UserBlockingSchedulerPriority：较高优先级，优先响应用户交互
+        schedulerPriorityLevel = UserBlockingSchedulerPriority
+        break
+      case DefaultEventPriority:
+        // 普通优先级
+        schedulerPriorityLevel = NormalSchedulerPriority
+        break
+      case IdleEventPriority:
+        // IdleSchedulerPriority：空闲优先级
+        schedulerPriorityLevel = IdleSchedulerPriority
+        break
+      default:
+        schedulerPriorityLevel = NormalSchedulerPriority
+        break
+    }
+    // 告诉浏览器需要执行performConcurrentWorkOnRoot
+    Scheduler_scheduleCallback(
+      schedulerPriorityLevel,
+      performConcurrentWorkOnRoot.bind(null, root)
+    )
+  }
   // 实现批量更新，只有第一次才进入，commitRoot后清空
-  if (workInProgressRoot) return
-  workInProgressRoot = root
-  // 告诉浏览器需要执行performConcurrentWorkOnRoot
-  scheduleCallback(performConcurrentWorkOnRoot.bind(null, root))
+  // if (workInProgressRoot) return
+  // workInProgressRoot = root
 }
 
 /**
  * 根据fiber构建fiber树，要创建真实dom节点，还要把真实dom节点插入容器
  * @param {*} root
  */
-function performConcurrentWorkOnRoot(root) {
+function performConcurrentWorkOnRoot(root, timeout) {
+  // 获取当前优先级最高的车道
+  const nextLanes = getNextLanes(root, NoLanes)
+  if (nextLanes === NoLanes) {
+    return null
+  }
   // 第一次渲染以同步的方式渲染根节点，初次渲染的时候，都是同步的（为了保证初始化加载的完整）
-  renderRootSync(root)
+  renderRootSync(root, nextLanes)
   // 开始进入提交阶段，就是执行副作用，修改真实dom
   // finishedWork表示最新完成的工作，也就是新构建的fiber树（root.current是老fiber）
   const finishedWork = root.current.alternate
   root.finishedWork = finishedWork
   commitRoot(root)
-  workInProgressRoot = null
+  return null
 }
 
 // 异步执行，需要等待commitRoot执行完成后执行（但也需要等浏览器空闲才执行）
@@ -67,6 +135,8 @@ function flushPassiveEffect() {
 
 function commitRoot(root) {
   const { finishedWork } = root
+  workInProgressRoot = null
+  workInProgressRenderLanes = null
   // 发现需要处理的 useEffect，安排任务
   if (
     (finishedWork.subtreeFlags & Passive) !== NoFlags ||
@@ -77,7 +147,7 @@ function commitRoot(root) {
       rootDoesHavePassiveEffect = true
       // 异步执行，在commitRoot的commitMutationEffectsOnFiber执行完成后执行
       // 也就是当dom更新后，执行回调，可以看【docs/20-useEffect/index.md #`src/react-reconciler/src/ReactFiberWorkLoop.js`】
-      scheduleCallback(flushPassiveEffect)
+      Scheduler_scheduleCallback(NormalSchedulerPriority, flushPassiveEffect)
     }
   }
   // 判断子树是否有副作用
@@ -101,15 +171,24 @@ function commitRoot(root) {
   root.current = finishedWork
 }
 
-function renderRootSync(root) {
+function renderRootSync(root, renderLanes) {
   // 开始构建fiber树
-  prepareFreshStack(root)
+  prepareFreshStack(root, renderLanes)
   workLoopSync()
 }
 
 // 为本轮渲染做好准备——准备工作中的根 Fiber，并把暂存的更新放进各自 Hook 的队列
-function prepareFreshStack(root) {
-  workInProgress = createWorkInProgress(root.current, null)
+function prepareFreshStack(root, renderLanes) {
+  // 判断这次渲染是否需要重新从根 Fiber 开始准备工作
+  if (
+    // 表示要处理的根变了
+    root !== workInProgressRoot ||
+    // 本轮要处理的车道变了，就需要按照新的车道重新开始计算
+    workInProgressRenderLanes !== renderLanes
+  ) {
+    workInProgress = createWorkInProgress(root.current, null)
+  }
+  workInProgressRenderLanes = renderLanes
   // 把暂存的更新放进各自 Hook 的队列
   finishQueueingConcurrentUpdates()
 }
@@ -129,7 +208,7 @@ function performUnitOfWork(unitOfWork) {
   // unitOfWork.alternate就是指向老fiber
   const current = unitOfWork.alternate
   // 完成当前fiber的子fiber链表构建后
-  const next = beginWork(current, unitOfWork)
+  const next = beginWork(current, unitOfWork, workInProgressRenderLanes)
   unitOfWork.memoizedProps = unitOfWork.pendingProps
   if (next === null) {
     // 如果没有子节点，表示当前fiber已经完成
@@ -173,4 +252,18 @@ function completeUnitOfWork(unitOfWork) {
       workInProgress = completedWork
     }
   } while (completedWork !== null)
+}
+
+// 获取当前的更新优先级
+export function requestUpdateLane() {
+  // 获取当前全局定义的lane
+  const updateLane = getCurrentUpdatePriority()
+  // updateLane !== 0，表示已经设置了优先级，直接返回
+  if (updateLane !== NoLanes) {
+    return updateLane
+  }
+  // 没有设置优先级，根据事件来选择当前的优先级
+  // 例如离散事件DiscreteEventPriority = SyncLane
+  const eventLane = getCurrentEventPriority()
+  return eventLane
 }

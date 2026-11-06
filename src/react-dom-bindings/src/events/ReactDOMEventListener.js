@@ -1,14 +1,19 @@
 import getEventTarget from './getEventTarget'
 import { dispatchEventForPluginEventSystem } from './DOMPluginEventSystem'
 import { getClosestInstanceFromNode } from '../client/ReactDOMComponentTree'
+import {
+  ContinuousEventPriority,
+  DefaultEventPriority,
+  DiscreteEventPriority
+} from 'react-reconciler/src/ReactEventPriority'
 
 /**
  * 提前给 dispatchDiscreteEvent 绑定三个参数，然后返回一个新函数。
  * 返回的新函数的参数，就是 dispatchDiscreteEvent 的第四个参数，也就是原生事件对象
- * @param {*} targetContainer 
- * @param {*} domEventName 
- * @param {*} eventSystemFlags 
- * @returns 
+ * @param {*} targetContainer
+ * @param {*} domEventName
+ * @param {*} eventSystemFlags
+ * @returns
  */
 export function createEventListenerWrapperWithPriority(
   targetContainer,
@@ -65,4 +70,20 @@ export function dispatchEvent(
     targetInst, // 真实dom对应的fiber
     targetContainer // 目标容器
   )
+}
+
+/**
+ * 获取事件优先级
+ * @param {*} domEventName 事件名称，例如click
+ */
+export function getEventPriority(domEventName) {
+  switch (domEventName) {
+    // 源码中有很多事件，这里省略了
+    case 'click':
+      return DiscreteEventPriority
+    case 'drag':
+      return ContinuousEventPriority
+    default:
+      return DefaultEventPriority
+  }
 }

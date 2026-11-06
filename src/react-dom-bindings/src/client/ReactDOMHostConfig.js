@@ -4,6 +4,8 @@ import {
   updateProperties
 } from './ReactDOMComponent'
 import { precacheFiberNode, updateFiberProps } from './ReactDOMComponentTree'
+import { DefaultEventPriority } from 'react-reconciler/src/ReactEventPriority'
+import { getEventPriority } from '../events/ReactDOMEventListener'
 
 // 判断当前的虚拟dom是否是纯文本
 export function shouldSetTextContent(type, props) {
@@ -71,4 +73,13 @@ export function commitUpdate(
 
 export function removeChild(parentInstance, child) {
   parentInstance.removeChild(child)
+}
+
+// 获取当前的事件优先级
+export function getCurrentEventPriority() {
+  const currentEvent = window.event
+  if (currentEvent === undefined) {
+    return DefaultEventPriority
+  }
+  return getEventPriority(currentEvent.type)
 }

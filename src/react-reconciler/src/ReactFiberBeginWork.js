@@ -6,7 +6,7 @@ import {
   HostText,
   IndeterminateComponent
 } from './ReactWorkTags'
-import { processUpdateQueue } from './ReactFiberClassUpdateQueue'
+import { processUpdateQueue, cloneUpdateQueue } from './ReactFiberClassUpdateQueue'
 import { mountChildFibers, reconcileChildFibers } from './ReactChildFiber'
 import { shouldSetTextContent } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
 import { renderWithHooks } from './ReactFiberHooks'
@@ -37,14 +37,24 @@ function reconcileChildren(current, workInProgress, nextChildren) {
 }
 
 // workInProgress -> 新fiber
-function updateHostRoot(current, workInProgress) {
+function updateHostRoot(current, workInProgress, renderLanes) {
+  const nextProps = workInProgress.pendingProps
+  /**
+   * 给正在构建的 workInProgress 准备一个独立的更新队列外层对象，方便本轮渲染单独修改队列记录
+   * 因为前面 createWorkInProgress 中只是复制了引用：workInProgress.updateQueue = current.updateQueue
+   * 此时两个 Fiber 的 updateQueue 指向同一个对象，而接下来的 processUpdateQueue 会修改 updateQueue
+   * ---
+   * 这个改动是在引入lane之后的改动，因为之前的更新队列是一次性处理完全部的更新，
+   * 但是现在有了lane的更新优先级，剩余更新会留待后续处理，如果不隔离开会导致数据混乱
+   */
+  cloneUpdateQueue(current, workInProgress)
   /**
    * 一、需要知道它的子虚拟dom
    * 虚拟dom是由babel编译来的，也就是element，通过createRoot(dom).render(element)传入使用
    * 可以看【src/react-reconciler/src/ReactFiberReconciler.js】的updateContainer
    * workInProgress.memoizedState=payload，payload = { element }
    */
-  processUpdateQueue(workInProgress)
+  processUpdateQueue(workInProgress, nextProps, renderLanes)
   const nextState = workInProgress.memoizedState
   // 新的子虚拟dom（因为这个是HostRoot，所以有element）
   const nextChildren = nextState.element
@@ -113,9 +123,10 @@ export function updateFunctionComponent(
  * 根据新虚拟dom去构建新的fiber子链表（child、child.slibing）
  * @param {*} current 老fiber
  * @param {*} workInProgress 新fiber
+ * @param {*} renderLanes
  * @returns
  */
-export function beginWork(current, workInProgress) {
+export function beginWork(current, workInProgress, renderLanes) {
   logger('beginWork', workInProgress)
   switch (workInProgress.tag) {
     // 在react中组件有两种，一种是函数组件，一种是类组件，本质都是函数，所以在beginWork不区分函数和类组件
@@ -123,7 +134,8 @@ export function beginWork(current, workInProgress) {
       return mountIndeterminateComponent(
         current,
         workInProgress,
-        workInProgress.type
+        workInProgress.type,
+        renderLanes
       )
     case FunctionComponent: {
       const Component = workInProgress.type
@@ -132,13 +144,14 @@ export function beginWork(current, workInProgress) {
         current,
         workInProgress,
         Component,
-        nextProps
+        nextProps,
+        renderLanes
       )
     }
     case HostRoot:
-      return updateHostRoot(current, workInProgress)
+      return updateHostRoot(current, workInProgress, renderLanes)
     case HostComponent:
-      return updateHostComponent(current, workInProgress)
+      return updateHostComponent(current, workInProgress, renderLanes)
     case HostText:
       return null
     default:
