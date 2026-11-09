@@ -1,9 +1,23 @@
 /**
+ * ❓调度器为什么要使用最小堆算法
+ * 调度器最常做的事情是：从所有待执行任务里，找出最该先执行的那一个。最小堆恰好擅长这个操作
+ * 
+ * 源码中使用过期时间作为排序依据：sortIndex: expirationTime，过期时间越小，代表越早到期，就越应该先执行
+ * 比如有三个任务：A（过期时间5000），B（250），C（1000）
+ * 放进最小堆后，堆顶是B：
+ *          B：250
+          /      \
+    A：5000    C：1000
+    所以 peek(taskQueue) // 直接拿到 B
+    最小堆不需要把所有任务完整排序，只需要保证每个父节点都不大于它的子节点，就能保证堆顶最小。
+ */
+
+/**
  * 向最小堆里添加一个节点
  * @param {*} heap 最小堆
  * @param {*} node
  */
-function push(heap, node) {
+export function push(heap, node) {
   // 获取元素数量
   const index = heap.length
   // 先把添加的元素放在数组的尾部
@@ -15,7 +29,7 @@ function push(heap, node) {
  * 查看最小堆顶的元素
  * @param {*} heap
  */
-function peek(heap) {
+export function peek(heap) {
   const first = heap[0]
   return first === undefined ? null : first
 }
@@ -24,7 +38,7 @@ function peek(heap) {
  * 弹出最小堆的堆顶元素
  * @param {*} heap
  */
-function pop(heap) {
+export function pop(heap) {
   // 取出数组中第一个，也就是堆顶的元素
   const first = heap[0]
   if (first !== undefined) {

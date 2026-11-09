@@ -1,3 +1,5 @@
+import { allowConcurrentByDefault } from 'shared/ReactFeatureFlags'
+
 // 位运算时，会按32位有符合整数处理
 // 32 位 = 1 位符号位 + 31 位用于表示 lane
 export const TotalLanes = 31
@@ -57,4 +59,15 @@ export function isSubSetOfLanes(set, subset) {
 // 合并赛道
 export function mergeLanes(a, b) {
   return a | b
+}
+
+// 是否开启“默认允许分段渲染”
+export function includesBlockingLane(root, lanes) {
+  // 如果允许默认并行渲染，不要求一次性完成
+  if (allowConcurrentByDefault) {
+    return false
+  }
+  // 如果没开启并行渲染，然后如果这次又包含连续交互更新或普通更新，就必须要一次性完成
+  const SyncDefaultLanes = InputContinuousLane | DefaultLane
+  return (lanes & SyncDefaultLanes) !== NoLane
 }

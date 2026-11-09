@@ -1,5 +1,5 @@
 import ReactSharedInternals from 'shared/ReactSharedInternals'
-import { scheduleUpdateOnFiber } from './ReactFiberWorkLoop'
+import { requestUpdateLane, scheduleUpdateOnFiber } from './ReactFiberWorkLoop'
 import { enqueueConcurrentHookUpdate } from './ReactFiberConcurrentUpdates'
 import {
   Passive as PassiveEffect,
@@ -10,6 +10,7 @@ import {
   Passive as HookPassive,
   Layout as HookLayout
 } from './ReactHookEffectTags'
+import { NoLanes } from './ReactFiberLane'
 
 const { ReactCurrentDispatcher } = ReactSharedInternals
 
@@ -190,23 +191,35 @@ function mountState(initialState) {
 }
 
 function dispatchSetState(fiber, queue, action) {
+  // 获取当前的更新赛道
+  const lane = requestUpdateLane()
   const update = {
+    lane,
     action,
     hasEagerState: false, // 是否有急切的更新
     eagerState: null, // 急切的更新状态
     next: null
   }
-  // 当派发action后，立即用上一次的reducer和state去计算新状态
-  const { lastRenderedReducer, lastRenderedState } = queue
-  const eagerState = lastRenderedReducer(lastRenderedState, action)
-  update.hasEagerState = true
-  update.eagerState = eagerState
-  if (Object.is(eagerState, lastRenderedState)) {
-    return
+  const alternate = fiber.alternate
+  // 当前fiber没有待处理的更新，以及另一个老fiber不存在或者没有待处理的更新
+  if (
+    fiber.lanes === NoLanes &&
+    (alternate === null || alternate.lanes === NoLanes)
+  ) {
+    // 当派发action后，立即用上一次的reducer和state去计算新状态
+    // 先获取队列上老的状态和老的reducer
+    const { lastRenderedReducer, lastRenderedState } = queue
+    // 使用上次老的状态和上次的reducer结合本地action计算新状态，如果一致就return
+    const eagerState = lastRenderedReducer(lastRenderedState, action)
+    update.hasEagerState = true
+    update.eagerState = eagerState
+    if (Object.is(eagerState, lastRenderedState)) {
+      return
+    }
   }
   // 下面是真正的入队更新，并调度更新逻辑
-  const root = enqueueConcurrentHookUpdate(fiber, queue, update)
-  scheduleUpdateOnFiber(root)
+  const root = enqueueConcurrentHookUpdate(fiber, queue, update, lane)
+  scheduleUpdateOnFiber(root, fiber, lane)
 }
 
 /**
@@ -295,7 +308,9 @@ function mountReducer(reducer, inheritArg) {
   // 创建更新队列，保存在 Hook 上
   const queue = {
     pending: null,
-    dispatch: null
+    dispatch: null,
+    lastRenderedReducer: reducer,
+    lastRenderedState: inheritArg
   }
   hook.queue = queue
   // 创建当前 Hook 专属的 dispatch

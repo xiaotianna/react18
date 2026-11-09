@@ -1,4 +1,5 @@
 import { NoFlags } from './ReactFiberFlags'
+import { NoLanes } from './ReactFiberLane'
 import { HostComponent, HostRoot, HostText, IndeterminateComponent } from './ReactWorkTags'
 
 /**
@@ -45,6 +46,10 @@ export function FiberNode(tag, pendingProps, key) {
   this.subtreeFlags = NoFlags
   // 轮替作用，供双缓冲中使用（dom diff部分）
   this.alternate = null
+
+  // 记录当前fiber还有哪些优先级的更新等待处理
+  // 可以同时记录多个更新优先级。真正的更新内容保存在更新队列中，lanes 只记录它们的车道
+  this.lanes = NoLanes
 
   /**
    * 存放将要删除的子fiber，协调时发现需要删除的节点，就把它们放进去

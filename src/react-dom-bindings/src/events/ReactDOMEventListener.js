@@ -4,7 +4,9 @@ import { getClosestInstanceFromNode } from '../client/ReactDOMComponentTree'
 import {
   ContinuousEventPriority,
   DefaultEventPriority,
-  DiscreteEventPriority
+  DiscreteEventPriority,
+  getCurrentUpdatePriority,
+  setCurrentUpdatePriority
 } from 'react-reconciler/src/ReactEventPriority'
 
 /**
@@ -42,7 +44,16 @@ function dispatchDiscreteEvent(
   container,
   nativeEvent
 ) {
-  dispatchEvent(domEventName, eventSystemFlags, container, nativeEvent)
+  // 当触发离散事件，例如按钮的时候，需要设置更新优先级
+  // 获取当前老的更新优先级
+  const previousPriority = getCurrentUpdatePriority()
+  try {
+    // 把当前的更新优先级设置为离散事件优先级 1
+    setCurrentUpdatePriority(DiscreteEventPriority)
+    dispatchEvent(domEventName, eventSystemFlags, container, nativeEvent)
+  } finally {
+    setCurrentUpdatePriority(previousPriority)
+  }
 }
 
 /**
