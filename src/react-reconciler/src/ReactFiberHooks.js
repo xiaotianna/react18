@@ -162,8 +162,8 @@ function baseStateReducer(state, action) {
   return typeof action === 'function' ? action(state) : action
 }
 
-function updateState() {
-  return updateReducer(baseStateReducer)
+function updateState(initialState) {
+  return updateReducer(baseStateReducer, initialState)
 }
 
 /**
@@ -171,10 +171,15 @@ function updateState() {
  * return mountReducer(baseStateReducer, initialState)
  * 但是没有复用的原因是：做了一个优化
  * 当使用useState的时候，调用setNumber传入的状态是老状态，则不需要更新
+ * ---
+ * state分别是什么：
+ * hook.memoizedState：当前hook真正显示出来的状态
+ * hook.baseState：第一个跳过的更新对象，之前的老状态
+ * hook.queue.lastRenderedState：上一个计算的状态
  */
 function mountState(initialState) {
   const hook = mountWorkInProgressHook()
-  hook.memoizedState = initialState
+  hook.memoizedState = hook.baseState = initialState
   const queue = {
     pending: null,
     dispatch: null,
@@ -256,7 +261,10 @@ function updateReducer(reducer) {
       update = update.next
     } while (update !== null && update !== firstQueue)
   }
-  hook.memoizedState = newState
+  // 计算好新的状态后，不但要改变hook的状态，也要改变hook上队列的lastRenderedState，两者的使用地方不同：
+  // 1、hook.memoizedState 保存这个 Hook 本轮计算出的状态，作为 useState 的返回值
+  // 2、queue.lastRenderedState 下次调用 setState 时，用来提前计算新状态
+  hook.memoizedState = queue.lastRenderedState = newState
   return [hook.memoizedState, queue.dispatch]
 }
 

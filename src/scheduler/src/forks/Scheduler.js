@@ -134,11 +134,16 @@ if (typeof setImmediate === 'function') {
     setTimeout(performWorkUntilDeadline, 0)
 }
 
+function cancelCallback(task) {
+  task.callback = null
+}
+
 export {
   scheduleCallback as unstable_scheduleCallback,
   shouldYield as unstable_shouldYield,
   ImmediatePriority as unstable_ImmediatePriority,
   UserBlockingPriority as unstable_UserBlockingPriority,
   NormalPriority as unstable_NormalPriority,
-  IdlePriority as unstable_IdlePriority
+  IdlePriority as unstable_IdlePriority,
+  cancelCallback as unstable_cancelCallback
 }

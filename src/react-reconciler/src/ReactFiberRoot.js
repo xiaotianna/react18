@@ -1,12 +1,20 @@
 import { createHostRootFiber } from './ReactFiber'
 import { initialUpdateQueue } from './ReactFiberClassUpdateQueue'
-import { NoLanes } from './ReactFiberLane'
+import { NoLane, NoLanes } from './ReactFiberLane'
 
 function FiberRootNode(containerInfo) {
   // 外部createRoot传递的容器信息，也就是 div#root 这个dom节点
   this.containerInfo = containerInfo
   // 记录这个根节点下，哪些 lane 上还有更新等待处理
   this.pendingLanes = NoLanes
+
+  // 下面的两个变量的逻辑都在ReactFiberWorkLoop.js 的 ensureRootIsscheduled(root)中
+  // Scheduler 返回的任务对象
+  // 替换旧任务：需要换成其他优先级时，通过 callbackNode 取消旧任务，再安排新任务
+  this.callbackNode = null
+  // 已安排任务的 Lane 优先级
+  // 避免重复调度：新更新的优先级与 callbackPriority 相同，就复用已有任务，直接返回
+  this.callbackPriority = NoLane
 }
 
 // 创建根Fiber（FiberRootNode）

@@ -31,14 +31,26 @@ export function markRootUpdated(root, updateLane) {
   root.pendingLanes |= updateLane
 }
 
-// 从 root.pendingLanes 中选出最高优先级的 lane
-export function getNextLanes(root) {
+/**
+ * 从 root.pendingLanes 中选出最高优先级的 lane，也就是选出接下来要处理的 lane
+ * @param {*} root 根节点
+ * @param {*} wipLanes 正在渲染的车道
+ * @returns 
+ */
+export function getNextLanes(root, wipLanes) {
   // 先获取所有的有更新的车道
   const pendingLanes = root.pendingLanes
   if (pendingLanes === NoLanes) {
     return NoLanes
   }
+  // 从待处理更新中，选出优先级最高的 lane
   const nextLanes = getHighestPriorityLanes(pendingLanes)
+  if (wipLanes !== NoLane && wipLanes !== nextLanes) {
+    // 候选车道优先级更低，继续当前渲染
+    if (nextLanes > wipLanes) {
+      return wipLanes
+    }
+  }
   return nextLanes
 }
 

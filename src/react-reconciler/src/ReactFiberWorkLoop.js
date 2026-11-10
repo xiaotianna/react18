@@ -4,7 +4,8 @@ import {
   UserBlockingPriority as UserBlockingSchedulerPriority,
   NormalPriority as NormalSchedulerPriority,
   IdlePriority as IdleSchedulerPriority,
-  shouldYield
+  shouldYield,
+  cancelCallback as Scheduler_cancelCallback
 } from './Scheduler'
 import { createWorkInProgress } from './ReactFiber'
 import { beginWork } from './ReactFiberBeginWork'
@@ -23,7 +24,8 @@ import {
   getNextLanes,
   getHighestPriorityLane,
   SyncLane,
-  includesBlockingLane
+  includesBlockingLane,
+  NoLane
 } from './ReactFiberLane'
 import {
   DiscreteEventPriority,
@@ -72,16 +74,28 @@ export function scheduleUpdateOnFiber(root, fiber, lane) {
 
 // 根据根节点上的待处理更新，选出优先级，并安排执行更新的任务
 function ensureRootIsscheduled(root) {
+  // 先获取当前根上执行的任务
+  const existingCallbackNode = root.callbackNode
   // 获取当前优先级最高的车道
-  const nextLanes = getNextLanes(root, NoLanes)
+  const nextLanes = getNextLanes(root, workInProgressRootRenderLanes)
   // NoLanes表示没有任何更新车道，当前 root 没有待处理的更新，就直接退出，不安排渲染任务
   if (nextLanes === NoLanes) {
     return
   }
   // 获取新的调度优先级，仍然是lane值
   let newCallbackPriority = getHighestPriorityLane(nextLanes)
+  // 获取现在根上正在运行的优先级
+  const existingCallbackPriority = root.callbackPriority
+  if (existingCallbackPriority === newCallbackPriority) {
+    // 如果新的优先级和老的优先级一样，可以进行批量更新
+    // 也就是多次setState，会合并成一次的原理（同步添加任务，异步调用处理任务）
+    return
+  }
+  if (existingCallbackNode !== null) {
+    Scheduler_cancelCallback(existingCallbackNode)
+  }
   // 新的回调任务
-  let newCallbackNode
+  let newCallbackNode = null
   // 如果新的优先级是同步 -> 16
   if (newCallbackPriority === SyncLane) {
     // 同步更新
@@ -121,6 +135,7 @@ function ensureRootIsscheduled(root) {
     )
   }
   root.callbackNode = newCallbackNode
+  root.callbackPriority = newCallbackPriority
   // 实现批量更新，只有第一次才进入，commitRoot后清空
   // if (workInProgressRoot) return
   // workInProgressRoot = root
@@ -209,8 +224,9 @@ function commitRoot(root) {
 function commitRootImpl(root) {
   const { finishedWork } = root
   workInProgressRoot = null
-  workInProgressRootRenderLanes = null
+  workInProgressRootRenderLanes = NoLanes
   root.callbackNode = null
+  root.callbackPriority = NoLane
   // 发现需要处理的 useEffect，安排任务
   if (
     (finishedWork.subtreeFlags & Passive) !== NoFlags ||
@@ -272,6 +288,7 @@ function renderRootSync(root, renderLanes) {
     prepareFreshStack(root, renderLanes)
   }
   workLoopSync()
+  return RootCompleted
 }
 
 // 为本轮渲染做好准备——准备工作中的根 Fiber，并把暂存的更新放进各自 Hook 的队列
