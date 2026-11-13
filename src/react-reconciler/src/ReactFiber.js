@@ -66,6 +66,7 @@ export function FiberNode(tag, pendingProps, key) {
       parentFiber.deletions = [旧AFiber, 旧CFiber]
    */
   this.deletions = null
+  this.ref = null
 }
 
 export function createFiber(tag, pendingProps, key) {
@@ -108,6 +109,7 @@ export function createWorkInProgress(current, pendingProps) {
     // 它可能保留着上一次渲染的标记，所以需要重置
     workInProgress.flags = NoFlags
     workInProgress.subtreeFlags = NoFlags
+    workInProgress.deletions = null
   }
   /**
    * 这里不需要处理父节点return，由后续“连接父子节点”的代码设置
@@ -121,6 +123,7 @@ export function createWorkInProgress(current, pendingProps) {
   workInProgress.memoizedState = current.memoizedState
   workInProgress.updateQueue = current.updateQueue
   workInProgress.index = current.index
+  workInProgress.ref = current.ref
 
   return workInProgress
 }

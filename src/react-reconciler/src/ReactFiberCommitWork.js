@@ -9,6 +9,7 @@ import {
   MutationMask,
   Passive,
   Placement,
+  Ref,
   Update
 } from './ReactFiberFlags'
 import {
@@ -61,12 +62,17 @@ function commitDeletionEffectsOnFiber(
   switch (deletedFiber.tag) {
     case HostComponent:
     case HostText: {
+      commitDetachRef(deletedFiber)
+      // 移除外层 DOM 即可，内部仍需遍历以清理 ref
+      const prevHostParent = hostParent
+      hostParent = null
       // 当要删除一个节点的时候，要先删除它的子节点
       recursivelyTraverseDeletionEffects(
         finishedRoot,
         nearestMountedAnceston,
         deletedFiber
       )
+      hostParent = prevHostParent
       // 再删除自己
       if (hostParent !== null) {
         removeChild(hostParent, deletedFiber.stateNode)
@@ -74,6 +80,11 @@ function commitDeletionEffectsOnFiber(
       break
     }
     default:
+      recursivelyTraverseDeletionEffects(
+        finishedRoot,
+        nearestMountedAnceston,
+        deletedFiber
+      )
       break
   }
 }
@@ -275,6 +286,10 @@ export function commitMutationEffectsOnFiber(finishedWork, root) {
       // 这两步和上面一样，只是原生节点需要需要dom的更新
       recursivelyTraverseMutaionsEffects(root, finishedWork)
       commitReconciliationEffects(finishedWork)
+      // ref 变化时，先解绑旧节点，等待 layout 阶段绑定新节点
+      if (flags & Ref && current !== null) {
+        commitDetachRef(current)
+      }
       // DOM更新，在【CompleteWork】的updateHostComponent中，添加了markUpdate，就能判断是否有Update
       // 完成阶段：发现属性差异 → 保存清单 → 标记 Update
       // 提交阶段：发现 Update → 取出清单 → 更新 DOM
@@ -304,6 +319,34 @@ export function commitMutationEffectsOnFiber(finishedWork, root) {
       break
     default:
       break
+  }
+}
+
+/**
+ * commitDetachRef和commitAttachRef是唯一实际写 ref.current / 调用回调 ref 的地方
+ */
+// 负责把ref 和 DOM 断开（清空）
+function commitDetachRef(current) {
+  const ref = current.ref
+  if (ref !== null) {
+    if (typeof ref === 'function') {
+      ref(null)
+    } else {
+      ref.current = null
+    }
+  }
+}
+
+// 负责把 ref 和 DOM 接上
+function commitAttachRef(finishedWork) {
+  const ref = finishedWork.ref
+  if (ref !== null) {
+    const instance = finishedWork.stateNode
+    if (typeof ref === 'function') {
+      ref(instance)
+    } else {
+      ref.current = instance
+    }
   }
 }
 
@@ -443,10 +486,17 @@ function commitLayoutEffectOnFiber(finishedRoot, current, finishedWork) {
       recursivelyTraverseLayoutEffects(finishedRoot, finishedWork)
       break
     }
+    case HostComponent: {
+      recursivelyTraverseLayoutEffects(finishedRoot, finishedWork)
+      if (flags & Ref) {
+        commitAttachRef(finishedWork)
+      }
+      break
+    }
     case FunctionComponent: {
       // 先处理子节点中的 useLayoutEffect
       recursivelyTraverseLayoutEffects(finishedRoot, finishedWork)
-      if (flags & LayoutMask) {
+      if (flags & Update) {
         // 再处理当前组件本轮需要执行的 useLayoutEffect 的 create
         commitHookLayoutEffects(finishedWork, HookHasEffect | HookLayout)
       }
