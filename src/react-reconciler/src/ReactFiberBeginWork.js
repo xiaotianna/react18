@@ -10,6 +10,7 @@ import { processUpdateQueue, cloneUpdateQueue } from './ReactFiberClassUpdateQue
 import { mountChildFibers, reconcileChildFibers } from './ReactChildFiber'
 import { shouldSetTextContent } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
 import { renderWithHooks } from './ReactFiberHooks'
+import { NoLanes } from './ReactFiberLane'
 
 /**
  * 根据新的虚拟dom生成新的fiber链表
@@ -106,13 +107,15 @@ export function updateFunctionComponent(
   current,
   workInProgress,
   Component,
-  nextProps
+  nextProps,
+  renderLanes
 ) {
   const nextChildren = renderWithHooks(
     current,
     workInProgress,
     Component,
-    nextProps
+    nextProps,
+    renderLanes
   )
   // 协调子节点，和上面的 updateHostRoot 方法中的一样
   reconcileChildren(current, workInProgress, nextChildren)
@@ -127,7 +130,9 @@ export function updateFunctionComponent(
  * @returns
  */
 export function beginWork(current, workInProgress, renderLanes) {
-  logger('beginWork', workInProgress)
+  // logger('beginWork', workInProgress)
+  // 在构建fiber树之前先清空lane
+  workInProgress.lanes = NoLanes
   switch (workInProgress.tag) {
     // 在react中组件有两种，一种是函数组件，一种是类组件，本质都是函数，所以在beginWork不区分函数和类组件
     case IndeterminateComponent:

@@ -21,6 +21,10 @@ let frameStartTime = -1
 // 表示调度循环是否已经启动
 let isMessageLoopRunning = false
 
+function getCurrentTime() {
+  return performance.now()
+}
+
 /**
  * 把你要执行的函数包装成一个任务，按紧急程度放入队列，并确保调度循环启动
  * @param {*} priorityLevel 任务优先级
@@ -68,7 +72,7 @@ export function scheduleCallback(priorityLevel, callback) {
 }
 
 export function shouldYield() {
-  return performance.now() - frameStartTime >= frameInterval
+  return getCurrentTime() - frameStartTime >= frameInterval
 }
 
 function workLoop(initialTime) {
@@ -145,5 +149,6 @@ export {
   UserBlockingPriority as unstable_UserBlockingPriority,
   NormalPriority as unstable_NormalPriority,
   IdlePriority as unstable_IdlePriority,
-  cancelCallback as unstable_cancelCallback
+  cancelCallback as unstable_cancelCallback,
+  getCurrentTime as now
 }

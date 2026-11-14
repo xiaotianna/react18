@@ -13,6 +13,7 @@ import {
   prepareUpdate
 } from 'react-dom-bindings/src/client/ReactDOMHostConfig'
 import { NoFlags, Update, Ref } from './ReactFiberFlags'
+import { NoLanes, mergeLanes } from './ReactFiberLane'
 
 function markRef(workInProgress) {
   workInProgress.flags |= Ref
@@ -139,6 +140,8 @@ export function completeWork(current, workInProgress) {
 
 function bubbleProperties(completedWork) {
   let subtreeFlags = NoFlags
+  // 还需要向上冒泡赛道
+  let childLanes = NoLanes
   // 遍历当前fiber的所有子节点，把所有子节点的副作用，以及子节点的子节点副作用全部合并
   let child = completedWork.child
   while (child !== null) {
@@ -146,7 +149,9 @@ function bubbleProperties(completedWork) {
     subtreeFlags |= child.subtreeFlags
     // 子节点的副作用
     subtreeFlags |= child.flags
+    childLanes = mergeLanes(childLanes, mergeLanes(child.lanes, child.childLanes))
     child = child.sibling
   }
   completedWork.subtreeFlags = subtreeFlags
+  completedWork.childLanes = childLanes
 }

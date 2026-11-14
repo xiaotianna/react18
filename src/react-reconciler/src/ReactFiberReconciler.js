@@ -1,6 +1,6 @@
 import { createUpdate, enqueueUpdate } from './ReactFiberClassUpdateQueue'
 import { createFiberRoot } from './ReactFiberRoot'
-import { scheduleUpdateOnFiber, requestUpdateLane } from './ReactFiberWorkLoop'
+import { scheduleUpdateOnFiber, requestUpdateLane, requestEventTime } from './ReactFiberWorkLoop'
 
 // 创建内部根：FiberRootNode（通过createFiberRoot创建）
 export function createContainer(containerInfo) {
@@ -15,6 +15,7 @@ export function createContainer(containerInfo) {
 export function updateContainer(element, container) {
   // 获取当前的根fiber：HostRootFiber
   const current = container.current
+  const eventTime = requestEventTime()
   // 获取当前更新的车道，为了确定当前的更新优先级
   const lane = requestUpdateLane(current)
   // 创建更新
@@ -31,5 +32,5 @@ export function updateContainer(element, container) {
   update.payload = { element }
   // 把此更新对象添加到current这个根fiber的更新队列上
   const root = enqueueUpdate(current, update, lane)
-  scheduleUpdateOnFiber(root, current, lane)
+  scheduleUpdateOnFiber(root, current, lane, eventTime)
 }

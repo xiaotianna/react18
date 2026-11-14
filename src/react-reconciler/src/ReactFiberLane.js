@@ -26,6 +26,9 @@ export const IdleLane = 0b0010000000000000000000000000000
 export const OffscreenLane = 0b0100000000000000000000000000000
 export const DeferredLane = 0b1000000000000000000000000000000
 
+// 没有时间戳
+export const NoTimestamp = -1
+
 export function markRootUpdated(root, updateLane) {
   // pendingLanes表示此根上等待生效的lane
   root.pendingLanes |= updateLane
@@ -35,7 +38,7 @@ export function markRootUpdated(root, updateLane) {
  * 从 root.pendingLanes 中选出最高优先级的 lane，也就是选出接下来要处理的 lane
  * @param {*} root 根节点
  * @param {*} wipLanes 正在渲染的车道
- * @returns 
+ * @returns
  */
 export function getNextLanes(root, wipLanes) {
   // 先获取所有的有更新的车道
@@ -82,4 +85,84 @@ export function includesBlockingLane(root, lanes) {
   // 如果没开启并行渲染，然后如果这次又包含连续交互更新或普通更新，就必须要一次性完成
   const SyncDefaultLanes = InputContinuousLane | DefaultLane
   return (lanes & SyncDefaultLanes) !== NoLane
+}
+
+// 是否包含过期车道
+export function includesExpiredLane(root, lanes) {
+  return (lanes & root.expiredLanes) !== NoLanes
+}
+
+// 取最左侧1的索引
+function pickArbitraryLaneIndex(lanes) {
+  // clz32返回最左侧的1，它左边0的个数
+  // 00011000 -> 那么1的索引就是4
+  return 31 - Math.clz32(lanes)
+}
+
+// 检查所有待处理的 lane，给它们设置截止时间，并把等待超时的 lane 标记为过期
+export function markStarvedLanesAsExpired(root, currentTime) {
+  // 获取当前有更新的赛道
+  const pendingLanes = root.pendingLanes
+  // 记录每个赛道上的过期时间
+  const expirationTimes = root.expirationTimes
+  let lanes = pendingLanes
+  while (lanes > 0) {
+    const index = pickArbitraryLaneIndex(lanes)
+    const lane = 1 << index
+    const expirationTime = expirationTimes[index]
+    if (expirationTime === NoTimestamp) {
+      // 如果此赛道上没有过期时间，说明没为此车道设置过期时间，需要设置一个
+      expirationTimes[index] = computeExpirationTime(lane, currentTime)
+    } else if (expirationTime <= currentTime) {
+      // 如果当前车道的过期时间已经 <= 当前时间了，证明已经过期了，需要添加到过期的车道参数中
+      root.expiredLanes |= lane
+    }
+    lanes &= ~lane
+  }
+}
+
+// 根据 lane 的优先级，计算它的截止时间，供后续判断是否过期
+function computeExpirationTime(lane, currentTime) {
+  switch (lane) {
+    case SyncLane:
+    case InputContinuousLane:
+      return currentTime + 250
+    case DefaultLane:
+      return currentTime + 5000
+    case IdleLane:
+      return NoTimestamp
+    default:
+      return NoTimestamp
+  }
+}
+
+// 记录每个 lane 的截止时间，是一个长度为 31 的数组，全部为 -1，表示尚未设置截止时间
+export function createLaneMap(initial) {
+  const laneMap = []
+  for (let i = 0; i < TotalLanes; i++) {
+    laneMap.push(initial)
+  }
+  return laneMap
+}
+
+/**
+ * 一轮渲染完成后，清理已经处理完的 lane，并保留还需要继续处理的 lane
+ * @param {*} root
+ * @param {*} remainingLanes 这一轮结束后，仍然有更新待处理的 lane 集合
+ */
+export function markRootFinished(root, remainingLanes) {
+  // pendingLanes是根上将要被渲染的车道
+  // noLongerPendingLanes是已经更新过的车道
+  const noLongerPendingLanes = root.pendingLanes & ~remainingLanes
+  root.pendingLanes = remainingLanes
+  root.expiredLanes &= remainingLanes
+  const expirationTimes = root.expirationTimes
+  let lanes = noLongerPendingLanes
+  while (lanes > 0) {
+    const index = pickArbitraryLaneIndex(lanes)
+    const lane = 1 << index
+    // 清除已经计算过的车道的过期时间
+    expirationTimes[index] = NoTimestamp
+    lanes &= ~lane
+  }
 }

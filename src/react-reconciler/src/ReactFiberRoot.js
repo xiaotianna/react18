@@ -1,6 +1,6 @@
 import { createHostRootFiber } from './ReactFiber'
 import { initialUpdateQueue } from './ReactFiberClassUpdateQueue'
-import { NoLane, NoLanes } from './ReactFiberLane'
+import { NoLane, NoLanes, NoTimestamp, createLaneMap } from './ReactFiberLane'
 
 function FiberRootNode(containerInfo) {
   // 外部createRoot传递的容器信息，也就是 div#root 这个dom节点
@@ -15,6 +15,12 @@ function FiberRootNode(containerInfo) {
   // 已安排任务的 Lane 优先级
   // 避免重复调度：新更新的优先级与 callbackPriority 相同，就复用已有任务，直接返回
   this.callbackPriority = NoLane
+
+  // 这两个字段是为了记录更新已经等了多久，并让等待过久的更新在执行时不再被时间切片反复延后，属于防止更新“饥饿”的机制
+  // 记录每个 lane 的截止时间，是一个长度为 31 的数组，全部为 -1，表示尚未设置截止时间
+  this.expirationTimes = createLaneMap(NoTimestamp)
+  // 用位掩码记录哪些 lane 已经过期，方便快速判断	0，表示没有过期 lane
+  this.expiredLanes = NoLanes
 }
 
 // 创建根Fiber（FiberRootNode）

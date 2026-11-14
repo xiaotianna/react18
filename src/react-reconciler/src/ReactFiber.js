@@ -1,6 +1,11 @@
 import { NoFlags } from './ReactFiberFlags'
 import { NoLanes } from './ReactFiberLane'
-import { HostComponent, HostRoot, HostText, IndeterminateComponent } from './ReactWorkTags'
+import {
+  HostComponent,
+  HostRoot,
+  HostText,
+  IndeterminateComponent
+} from './ReactWorkTags'
 
 /**
  * @param {*} tag fiber的类型：函数组件（0）、类组件（1）、原生组件（5）、根元素（3）
@@ -50,6 +55,8 @@ export function FiberNode(tag, pendingProps, key) {
   // 记录当前fiber还有哪些优先级的更新等待处理
   // 可以同时记录多个更新优先级。真正的更新内容保存在更新队列中，lanes 只记录它们的车道
   this.lanes = NoLanes
+  // 子节点赛道的更新
+  this.childLanes = NoLanes
 
   /**
    * 存放将要删除的子fiber，协调时发现需要删除的节点，就把它们放进去
@@ -79,11 +86,11 @@ export function createHostRootFiber() {
 
 /**
  * 基于老的fiber和新的属性来创建新的fiber
- * 
+ *
  * current和workInProgress不是同一个对象，workInProgress有两种情况：
  * 1、为null，会创建一个新的，然后通过alternate互相指向current
  * 2、存在alternate，直接复用老的alternate就可以了
- * 
+ *
  * 复用有两层含义：
  * 1、复用老的fiber对象
  * 2、复用老的真实dom
@@ -124,6 +131,8 @@ export function createWorkInProgress(current, pendingProps) {
   workInProgress.updateQueue = current.updateQueue
   workInProgress.index = current.index
   workInProgress.ref = current.ref
+  workInProgress.lanes = current.lanes
+  workInProgress.childLanes = current.childLanes
 
   return workInProgress
 }
